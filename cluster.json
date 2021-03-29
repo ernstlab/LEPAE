@@ -4,7 +4,7 @@
 		"queue"     : "highp",
 		"memory"    : "1G",
 		"name"      : "{rule}.{wildcards.target}.{wildcards.experiment}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.{wildcards.target}.{wildcards.experiment}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.target}.{wildcards.experiment}.out",
         "time"		: "1:00:00",
         "threads"   : 1
 	},
@@ -12,13 +12,13 @@
 	"generate_positions" : 
 	{
 		"name"      : "{rule}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.out"
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.out"
     }, 
     
     "prepare_input_to_generate_data" : 
 	{
 		"name"      : "{rule}.{wildcards.target}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.{wildcards.target}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.target}.out",
         "time"		: "0:10:00"
     },
     
@@ -26,7 +26,7 @@
     {
 		"memory"    : "2G",
 		"name"      : "{rule}.{wildcards.target}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.{wildcards.target}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.target}.out",
         "time"		: "4:00:00",
         "threads"   : 2
     },
@@ -35,7 +35,7 @@
     {
 		"memory"    : "2G",
         "name"      : "{rule}.{wildcards.target}",
-        "output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.{wildcards.target}.out",
+        "output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.target}.out",
         "time"		: "1:00:00"
     },
 
@@ -43,7 +43,7 @@
     {
 		"memory"    : "2G",
         "name"      : "{rule}.{wildcards.target}",
-        "output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.{wildcards.target}.out",
+        "output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.target}.out",
         "time"		: "1:00:00"
     },
 
@@ -51,7 +51,7 @@
     {
 		"memory"    : "2G",
 		"name"      : "{rule}.{wildcards.seed}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.{wildcards.seed}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.seed}.out",
         "time"		: "8:00:00",
         "threads"   : "12"
     },
@@ -60,7 +60,7 @@
     {
 		"memory"    : "2G",
 		"name"      : "{rule}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.out",
         "time"		: "0:10:00"
     },
 
@@ -68,7 +68,7 @@
     {
 		"memory"    : "2G",
 		"name"      : "{rule}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.out",
         "time"		: "8:00:00",
         "threads"   : "12"
     },
@@ -77,7 +77,7 @@
     {
 		"memory"    : "2G",
 		"name"      : "{rule}.{wildcards.usage}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.{wildcards.usage}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.usage}.out",
         "time"		: "2:00:00"
     },
 
@@ -85,7 +85,7 @@
     {
 		"memory"    : "2G",
 		"name"      : "{rule}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.out",
         "time"		: "4:00:00",
         "threads"   : "12"
     },
@@ -94,7 +94,7 @@
     {
 		"memory"    : "2G",
 		"name"      : "{rule}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.out",
         "time"		: "1:00:00"
     },
 
@@ -102,7 +102,7 @@
     {
 		"memory"    : "2G",
 		"name"      : "{rule}.{wildcards.usage}",
-		"output"    : "/u/home/s/skwon94/project-ernst/skwon94/pairwise/logs/{rule}.{wildcards.usage}.out",
+		"output"    : "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.usage}.out",
         "time"		: "1:00:00"
     }
 }

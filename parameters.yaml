@@ -16,10 +16,10 @@ num_trees: 100
 random_search_n: 50
 
 paths:
-  working_dir: "/u/home/s/skwon94/project-ernst/skwon94/pairwise/"
-  chrom_size_file: "/u/home/s/skwon94/project-ernst/skwon94/pairwise/hg19.chrom.sizes"
-  output_dir: "/u/home/s/skwon94/project-ernst/skwon94/pairwise/model/dist5000"
+  working_dir: "/u/project/ernst/skwon94/pairwise_scoring/"
+  chrom_size_file: "/u/project/ernst/skwon94/pairwise_scoring/hg19.chrom.sizes"
+  output_dir: "/u/project/ernst/skwon94/pairwise_scoring/model/dist5000"
   feature:
-    dnase_chipseq_input_dir: "/u/home/s/skwon94/project-ernst/skwon94/aligned_model/feature/preprocessed/hg19_DNaseChIPseq"
-    chromhmm_input_dir: "/u/home/s/skwon94/project-ernst/skwon94/aligned_model/feature/preprocessed/hg19_ChromHMM"
-  binary_bed_annot_dir: "/u/home/s/skwon94/project-ernst/skwon94/aligned_model/validation/bed_files/binary"
+    dnase_chipseq_input_dir: "/u/project/ernst/skwon94/aligned_model/feature/preprocessed/hg19_DNaseChIPseq"
+    chromhmm_input_dir: "/u/project/ernst/skwon94/aligned_model/feature/preprocessed/hg19_ChromHMM"
+  binary_bed_annot_dir: "/u/project/ernst/skwon94/aligned_model/validation/bed_files/binary"
