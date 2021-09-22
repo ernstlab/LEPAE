@@ -1,251 +1,429 @@
-import argparse,math,sys,scipy.sparse,gzip,random,numpy as np
-#from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import roc_curve, auc, average_precision_score, mean_squared_error
-import joblib
+import sys, gzip, threading, pandas as pd, argparse, os
+from collections import defaultdict
 
-# Train and save random forest classifier
+# SOURCE: https://www.tutorialspoint.com/python3/python_multithreading.htm
+class myThread(threading.Thread):
+    # featureStrings = {key: str() for key in range(1, 3)}  # 5)}
+    printInit = 0
 
-def printProgress(p):
-    sys.stdout.write("\r\t[%s%s] %.3f%%    " % ("=" * int(p), " " * (100 - int(p)), p))
-    sys.stdout.flush()
+    def __init__(
+        self,
+        thread_id,
+        name,
+        feature_cat,
+        directory,
+        input_positions,
+        active_indices,
+        num_chromatin_states,
+        feature_indices,
+        frac_feature,
+    ):
+        threading.Thread.__init__(self)
+        self.thread_id = thread_id
+        self.name = name
+        self.feature_cat = feature_cat
+        self.directory = directory
+        self.input_positions = input_positions
+        self.active_indices = active_indices
+        self.num_chromatin_states = num_chromatin_states
+        self.feature_index = feature_indices[feature_cat]
+        self.frac_feature = frac_feature
+        # self.real_values = None
 
-def setTrainingHyperParameters(seed, num_features):
-    random.seed(seed)
-    np.random.seed(seed)
+    def run(self):
+        if self.feature_cat == 1:
+            readDnaseChipFeature(
+                self.directory,
+                self.input_positions,
+                self.active_indices,
+                self.frac_feature,
+            )
+        elif self.feature_cat == 2:
+            readChromHmmFeature(
+                self.directory,
+                self.input_positions,
+                self.active_indices,
+                self.num_chromatin_states,
+                self.feature_index,
+                self.frac_feature,
+            )
+        # elif self.feature == 3:
+        #     readCageFeature(self.directory, self.input_positions, self.active_indices,
+        #                     self.num_chromatin_states, self.feature_index)
+        # elif self.feature == 4:
+        #     self.real_values = readRnaSeqFeature(self.directory, self.input_positions,
+        #                                        self.active_indices, self.feature_index)
 
-    max_depth = random.choice([16,32,64,128,256,512,1024,2048,None]) # md (n=9)
-    min_samples_split = random.choice([32,64,128,256]) # mss (n=4)
-    min_samples_leaf = random.choice([32,64,128,256]) # msl (n=4)
-    max_features = random.choice(["auto","sqrt","log2"]) # 32,64,128,256,512,1024,2048,4096,None]) # maf (n=9)
-    bootstrap = True #random.choice([True,False]) # (n=2)
-
-    return max_depth,min_samples_split,min_samples_leaf,max_features,bootstrap
-
-def readChunk(files_to_read,current_chunk_size,num_features): #,rnaseq_range):
-
-    # File pointers
-    positive_a_data_file = files_to_read[0]
-    positive_b_data_file = files_to_read[1]
-    negative_a_data_file = files_to_read[2]
-    negative_b_data_file = files_to_read[3]
-
-    # Lists storing information needed for building a SciPy CSR matrix for the current chunk
-    indptr = [0]
-    indices = []
-    data = []
-
-    # Positive/negative label
-    label = []
-
-    for _ in range(current_chunk_size): # iterate through each pair of one positive sample and one negative sample
-
-        ### Read two positive samples
-        l1 = positive_a_data_file.readline().strip().split(b'|')
-        l2 = positive_b_data_file.readline().strip().split(b'|')
-
-        # print(current_chunk_size, i, lenO)
-
-        # Read indices of features that should be set to 1
-        positive_nonzero_feature_indices_1 = [int(s) for s in l1[1].strip().split()]
-        positive_nonzero_feature_indices_2 = [num_features + int(s) for s in l2[1].strip().split()]
-
-        # Same but regions symmetrically flipped
-        positive_nonzero_feature_indices_3 = [num_features + int(s) for s in l1[1].strip().split()]
-        positive_nonzero_feature_indices_4 = [int(s) for s in l2[1].strip().split()]
-
-        # Normalize RNA-seq values
-        # positive_real_valued_features = [(float(s)-rnaseq_range[0])/(rnaseq_range[1]-rnaseq_range[0]) for s in hl[2].strip().split()] if len(hl)>1 else []
-        # positive_real_valued_mouse_features = [(float(s)-mouse_rnaseq_range[0])/(mouse_rnaseq_range[1]-mouse_rnaseq_range[0]) for s in ml[2].strip().split()] if len(ml)>1 else []
-
-        # Save data for two positive samples
-        indptr += [indptr[-1]+len(positive_nonzero_feature_indices_1)+len(positive_nonzero_feature_indices_2)]
-        indptr += [indptr[-1]+len(positive_nonzero_feature_indices_3)+len(positive_nonzero_feature_indices_4)]
-        indices += positive_nonzero_feature_indices_1 + positive_nonzero_feature_indices_2 + positive_nonzero_feature_indices_3 + positive_nonzero_feature_indices_4
-        data += [1] * (len(positive_nonzero_feature_indices_1)+len(positive_nonzero_feature_indices_2)+len(positive_nonzero_feature_indices_3)+len(positive_nonzero_feature_indices_4))
-        #data += [1]*(len(positive_nonzero_feature_indices)-len(positive_real_valued_features)) + positive_real_valued_features\
-        #        + [1]*(len(positive_nonzero_mouse_feature_indices)-len(positive_real_valued_mouse_features)) + positive_real_valued_mouse_features
-        label += [1,1]
-
+    # def displayFeatureProgress(feature, stringUpdate):
+    #     if myThread.printInit:
+    #         sys.stdout.write(4 * "\033[F")
+    #     else:
+    #         myThread.printInit = 1
+    #     myThread.featureStrings[feature] = stringUpdate
+    #     displayString = str()
+    #     for i in range(1, 3):  # 5):
+    #         displayString += myThread.featureStrings[i] + "\n"
+    #     sys.stdout.write(displayString)
+    #     sys.stdout.flush()
 
 
-        ### Read two negative samples
-        l1 = negative_a_data_file.readline().strip().split(b'|')
-        l2 = negative_b_data_file.readline().strip().split(b'|')
+def readDnaseChipFeature(dnasechipseq_list_file, input_positions, active_indices, frac_feature):
+    # List of files containing position indices with overlapping peak in different DNase-seq and ChIP-seq data
+    dnasechipseq_files = open(dnasechipseq_list_file).readlines()
 
-        negative_nonzero_feature_indices_1 = [int(s) for s in l1[1].strip().split()]
-        negative_nonzero_feature_indices_2 = [num_features + int(s) for s in l2[1].strip().split()]
-        negative_nonzero_feature_indices_3 = [num_features + int(s) for s in l1[1].strip().split()]
-        negative_nonzero_feature_indices_4 = [int(s) for s in l2[1].strip().split()]
+    # Iterate through each file (each experiment in a specific cell-type and with a specific target if it's ChIP-seq)
+    for i in range(len(dnasechipseq_files)):
+        dnasechipseq_file = dnasechipseq_files[i].strip()
+        if os.stat(dnasechipseq_file).st_size == 0:  # skip if empty file
+            continue
+        try:
+            if frac_feature:
+                t = pd.read_table(dnasechipseq_file, engine="c", header=None).values
+                pos = t[:, 0]
+                cnt = t[:, 1]
+            else:
+                pos = pd.read_table(dnasechipseq_file, engine="c", header=None, squeeze=True).tolist()
+            valid = list(input_positions.intersection(pos))
+            for j in range(len(valid)):
+                if frac_feature:
+                    active_indices[valid[j]].append((i, cnt[j]))
+                else:
+                    active_indices[valid[j]].append(i)
+        except pd.errors.EmptyDataError as _:  # skip if empty file
+            continue
 
-        # Normalize RNA-seq values
-        # negative_real_valued_features = [(float(s)-rnaseq_range[0])/(rnaseq_range[1]-rnaseq_range[0]) for s in hl[2].strip().split()] if len(hl)>1 else []
-        # negative_real_valued_mouse_features = [(float(s)-mouse_rnaseq_range[0])/(mouse_rnaseq_range[1]-mouse_rnaseq_range[0]) for s in ml[2].strip().split()] if len(ml)>1 else []
+        # Status output
+        # p = int((i + 1) / len(dnasechipseq_files) * 100)
+        # displayString = (
+        #     "\tDNase-seq and ChIP-seq ["
+        #     + "=" * p
+        #     + " " * (100 - p)
+        #     + "] "
+        #     + str(p)
+        #     + "%\t"
+        # )
+        # myThread.displayFeatureProgress(1, displayString)
 
-        # Save data for two negative samples
-        indptr += [indptr[-1]+len(negative_nonzero_feature_indices_1)+len(negative_nonzero_feature_indices_2)]
-        indptr += [indptr[-1]+len(negative_nonzero_feature_indices_3)+len(negative_nonzero_feature_indices_4)]
-        indices += negative_nonzero_feature_indices_1 + negative_nonzero_feature_indices_2 + negative_nonzero_feature_indices_3 + negative_nonzero_feature_indices_4
-        data += [1] * (len(negative_nonzero_feature_indices_1) + len(negative_nonzero_feature_indices_2) + len(negative_nonzero_feature_indices_3) + len(negative_nonzero_feature_indices_4))
-        # data += [1]*(len(negative_nonzero_feature_indices)-len(negative_real_valued_features)) + negative_real_valued_features\
-        #         + [1]*(len(negative_nonzero_mouse_feature_indices)-len(negative_real_valued_mouse_features)) + negative_real_valued_mouse_features
-        label += [0,0]
 
-    return scipy.sparse.csr_matrix((data,indices,indptr),shape=(current_chunk_size*2*2,num_features*2),dtype=bool),label
+def readChromHmmFeature(
+    chromhmm_list_file,
+    input_positions,
+    active_indices,
+    chromhmm_num_states,
+    feature_index,
+    frac_feature,
+):
+    num_current_features = feature_index
+    #    active_indices = defaultdict(list) # Key: position index, value: non-zero feature index for the given position index
 
-def csr_vappend(a,b): # vertically combines two Scipy CSR matrices
-    a.data = np.hstack((a.data,b.data))
-    a.indices = np.hstack((a.indices,b.indices))
-    a.indptr = np.hstack((a.indptr,(b.indptr + a.nnz)[1:]))
-    a._shape = (a.shape[0]+b.shape[0],b.shape[1])
-    return a
+    # List of files containing position indices and their overlapping ChromHMM state for each cell-type
+    chromhmm_files = open(chromhmm_list_file).readlines()  # sorted(os.listdir(chromhmm_list_file))
+    for i in range(len(chromhmm_files)):  # Iterate through each file (each cell-type)
+        chromhmm_file = chromhmm_files[i].strip()
+        if os.stat(chromhmm_file).st_size == 0:  # skip if file is empty (unlikely to happen)
+            continue
+        with gzip.open(chromhmm_file, "rb") as f:
+            positions_found = 0
+            for line in f:
+                l = line.strip().split()
+                if frac_feature:
+                    position = int(l[0].decode("utf-8"))
+                    if position in input_positions:
+                        state = num_current_features + int(l[1].decode("utf-8")) - 1
+                        cnt = int(l[2].decode("utf-8"))
+                        updated = False
+                        for (k, v) in active_indices[position]:
+                            # print(k, v, state, cnt, k == state)
+                            if k == state:  # state annoated the window earlier
+                                active_indices[position].remove((k, v))
+                                active_indices[position].append((k, v + cnt))
+                                updated = True
+                                # print("!!!", k, v, v + cnt, active_indices[position])
+                                break
+                        if not updated:
+                            active_indices[position].append((state, cnt))
+                else:
+                    position = int(l[0].decode("utf-8"))
+                    if position in input_positions:
+                        positions_found += 1
+                        states = l[1].decode("utf-8").split(",")
+                        # state = int(state[1:]) if state.startswith('U') else int(state)
+                        active_indices[position] += [num_current_features + (int(s) - 1) for s in states]
 
-def readData(files_to_read,data_size,chunk_size,num_features): #,rnaseq_range):
+                    # Optimization added 10 July 2019
+                    if positions_found == len(input_positions):
+                        break
+        num_current_features += chromhmm_num_states
 
-    # Calculate the number of chucks
-    num_chunks = int(math.ceil(data_size/chunk_size))
+        # Status output
+        # p = int((i + 1) / len(chromhmm_files) * 100)
+        # displayString = "\tChromHMM [" + "=" * p + " " * (100 - p) + "] " + str(p) + "%"
+        # myThread.displayFeatureProgress(2, displayString)
 
-    # Data array that will eventually store all feature data
-    X = None
-    Y = []
 
-    for i in range(num_chunks): # iterate through the number of chunks
-        current_chunk_size = chunk_size if i <int(data_size/chunk_size) else data_size%chunk_size
-        if current_chunk_size==0:
-            break
-        #print (i,current_chunk_size,i*chunk_size,i*chunk_size+current_chunk_size,lines_to_read[:,i*chunk_size:i*chunk_size+current_chunk_size])
-        tmp_X,tmp_Y = readChunk(files_to_read,current_chunk_size,num_features) #,rnaseq_range)
+# def readCageFeature(cage_dir, input_positions, active_indices, chromhmm_num_states, feature_index):
+# #    num_current_features = 0 # Number of features processed so far
+#     num_current_features = feature_index
+# #    active_indices = defaultdict(list) # Key: position index, value: non-zero feature index for the given position index
+#
+#     # A file containing position indices and their CAGE peak data across multiple cell-types
+#     cage_file = os.listdir(cage_dir)[0]
+#     try:
+#         df = pd.read_table(cage_dir+cage_file,engine='c',header=None).as_matrix()
+#         positions = df[:,0] # Position indices
+#         features = df[:,1:] # Presence of CAGE peak in each position in each cell-type
+#         for i in range(len(positions)):
+#             if positions[i] in input_positions:
+#                 a = num_current_features + np.where(features[i,:]>0)[0] # active CAGE features
+#                 for j in a:
+#                     active_indices[positions[i]].append(j)
+#             # Status output
+#             p = int((i+1)/len(positions)*100)
+#             displayString = "\tCAGE [" + "=" * p + " "*(100-p) + "] " + str(p)+"% {0}".format(len(features[0]))
+#             myThread.displayFeatureProgress(3, displayString)
+#
+#         num_current_features += len(features[0])
+#         #print("DEBUG: CAGE index after update {0}\033[F\033[F".format(num_current_features))
+#     except (pd.errors.EmptyDataError,pd.io.common.EmptyDataError) as _:
+#         #print('! Empty CAGE data file', cage_file)
+#         num_current_features += 1829 if chromhmm_num_states==25 else 1073  ### TODO: THIS WAS HARDCODED. IF USING SPECIES OTHER THAN HUMAN AND MOUSE THIS SHOULD BE FIXED
+# #        num_current_features += 1829 if chromhmm_num_states==25 else 13  ### TODO: THIS WAS HARDCODED. IF USING SPECIES OTHER THAN HUMAN AND MOUSE THIS SHOULD BE FIXED
+#
+# def readRnaSeqFeature(rnaseq_dir, input_positions, active_indices, feature_index):
+#     num_current_features = feature_index
+#     real_values = defaultdict(list) # Key: position index, value: real value for the non-binary features
+#
+#     # List of files containing position indices and their RNA-seq level in different cell-types
+#     rnaseq_files = sorted(os.listdir(rnaseq_dir))
+#     for i in range(len(rnaseq_files)): # Iterate through each file (each cell-type)
+#         rnaseq_file = rnaseq_files[i]
+#         last_pos = int()
+#         try:
+#             df = pd.read_table(rnaseq_dir+rnaseq_file,engine='c',header=None).as_matrix()
+#             positions = df[:,0] # Position indices
+#             signals = df[:,1] # RNA-seq level of each position in the current cell-type
+#             for j in range(len(positions)):
+#                 if positions[j] in input_positions:
+#                     active_indices[positions[j]].append(num_current_features+i)
+#                     last_pos = num_current_features+i
+#                     real_values[positions[j]].append(signals[j])
+#             # Status output
+#             p = int((i+1)/len(rnaseq_files)*100)
+#             displayString = "\tRNA-seq [" + "=" * p + " "*(100-p) + "] " + str(p)+"% Pos last added {0}".format(last_pos)
+#             myThread.displayFeatureProgress(4, displayString)
+#         except (pd.errors.EmptyDataError,pd.io.common.EmptyDataError) as _:
+#             #print ('! Empty RNA-seq data file',rnaseq_file,i)
+#             continue
+#
+#     return real_values
 
-        # Store constructed feature matrix
-        if X==None:
-            X = tmp_X
-            Y = tmp_Y
+# Read and save features from separate gzipped files
+# def readFeatures(dnasechipseq_list_file,chromhmm_list_file,cage_dir,rnaseq_dir,chromhmm_num_states,input_positions):
+def readFeatures(
+    dnasechipseq_list_file,
+    chromhmm_list_file,
+    chromhmm_num_states,
+    input_positions,
+    frac_feature,
+):
+    active_indices = defaultdict(
+        list
+    )  # Key: position index, value: non-zero feature index for the given position index
+    # cage_file = os.listdir(cage_dir)[0]
+    # df = pd.read_table(cage_dir+cage_file,engine='c',header=None).as_matrix()
+    # features = df[:,1:] # Presence of CAGE peak in each position in each cell-type
+
+    # Feature indices are calcualted pre-emptively for multi-threading to append the correct active_indices values at position keys
+    # cage_index = chromhmm_index + chromhmm_num_states*len(os.listdir(chromhmm_list_file))
+    # rnaseq_index = cage_index + len(features[0]) # len(os.listdir(cage_dir))
+    feature_indices = [
+        0,
+        0,
+        len(open(dnasechipseq_list_file).readlines()),
+    ]  # , cage_index, rnaseq_index]
+
+    ### Process DNase-seq and ChIP-seq features ###
+    # This is the simplest type of feature. We only care about whether there is an overlapping peak at the position
+    thread1 = myThread(
+        1,
+        "Thread-1",
+        1,
+        dnasechipseq_list_file,
+        input_positions,
+        active_indices,
+        chromhmm_num_states,
+        feature_indices,
+        frac_feature,
+    )
+
+    ### Process ChromHMM features ###
+    # We do one-hot encoding for ChromHMM features. For example, if there are 25 states and a position is overlapping
+    # with state 5, we have a vector of length 25 with its 5th value set to 1 and the rest set to 0.
+    thread2 = myThread(
+        2,
+        "Thread-2",
+        2,
+        chromhmm_list_file,
+        input_positions,
+        active_indices,
+        chromhmm_num_states,
+        feature_indices,
+        frac_feature,
+    )
+
+    ### Process CAGE features ###
+    # Similarly to DNase-seq and ChIP-seq data, we only care about the presence of a peak for CAGE data.
+    # However, the data from different cell-types come in one file so we do not iterate through multiple files here.
+    # thread3 = myThread(3, "Thread-3", 3, cage_dir, input_positions, active_indices,
+    #                    chromhmm_num_states, feature_indices)
+
+    ### Process RNA-seq features ###
+    # thread4 = myThread(4, "Thread-4", 4, rnaseq_dir, input_positions, active_indices,
+    #                    chromhmm_num_states, feature_indices)
+    # Begin the threads for processing features individualls -- calls run() for each thread instance
+    thread1.start()
+    thread2.start()
+    # thread3.start()
+    # thread4.start()
+
+    # Wait for all 4 threads to finish before returning the completed active_indices and real_values from RNAseq feature
+    thread1.join()
+    thread2.join()
+    # thread3.join()
+    # thread4.join()
+
+    return active_indices  # ,thread4.real_values
+
+
+# Write features for each region
+def writeFormattedFeatures(f, chrs, starts, ends, position_indices, active_indices, frac_feature):  # ,real_values):
+    for i in range(len(position_indices)):  # Iterate through each region to write its features
+        ### Output format ###
+        # Each lines: chr start end pos_index | <list of all active/non-zero feature indices> | <list real values>
+        # Lists are separated by tab
+        # Real values correspond to the last active/non-zero feature indices. For example, if there are three real
+        # values, they correspond to the three last active/non-zero feature indices. If there is nothing written after
+        # the second bar (|), there is no feature with real values. All active features are binary in this case.
+
+        # First, write chromosome, start, end, and position index for the sample
+        tp = "\t".join([str(s) for s in [chrs[i], starts[i], ends[i], position_indices[i]]])
+        f.write(tp)  # tp.encode())
+        window_size = int(ends[i] - starts[i])
+
+        # Second, write active/non-zero feature indices
+        if frac_feature:
+            d = dict(sorted(active_indices[position_indices[i]]))
+            # print(i, tp, d)
+            a, b = d.keys(), d.values()
+            tp = (
+                "\t|\t"
+                + "\t".join(["%d" % s for s in a])
+                + "\t|\t"
+                + "\t".join(["%.6f" % (s / window_size) for s in b])
+            )
         else:
-            X = csr_vappend(X,tmp_X)
-            Y += tmp_Y
-        # printProgress((i+1)/num_chunks*100)
-    # print (X.shape)
+            t = sorted(list(set(active_indices[position_indices[i]])))
+            tp = "\t|\t" + "\t".join([str(s) for s in t])
+        f.write(tp)  # gzf.write(tp.encode())
 
-    return X,Y
+        # # Third, write real/non-binary values (RNA-seq expression levels)
+        # t = real_values[position_indices[i]] # Real values
+        # tp = '\t|\t'+'\t'.join([str(round(s,10)) for s in t])
+        # gzf.write(tp.encode())
 
-def eval(clf,inputs,labels):
-    scores = clf.predict_proba(inputs)
-    scores = scores[:,1]
-    mse = mean_squared_error(labels, scores)
-    fpr, tpr, _ = roc_curve(labels, scores)
-    auroc = auc(fpr, tpr) # au-ROC
-    auprc = average_precision_score(labels, scores) # au-PRC
-    pos_mean_score = np.mean([scores[i] for i in range(len(scores)) if labels[i]==1])
-    neg_mean_score = np.mean([scores[i] for i in range(len(scores)) if labels[i]==0])
+        f.write("\n")  # gzf.write('\n'.encode()) # nextline
 
-    return mse,auroc,auprc,np.mean(scores),pos_mean_score,neg_mean_score
+        # p = int((i+1)/len(position_indices)*100)
+        # sys.stdout.write("\r\t[" + "=" * p + " "*(100-p) + "] " + str(p)+"%")
+        # sys.stdout.flush()
+
+    # sys.stdout.write('\n')
+
 
 def main():
 
     ### Input arguments ###
-    parser = argparse.ArgumentParser(prog='base_maker',description='Train a random forest',fromfile_prefix_chars='@')
-
-    # Training data filenames
-    parser.add_argument('-A','--a-training-data-filename',help='path to region A training data file',type=str)
-    parser.add_argument('-B','--b-training-data-filename',help='path to region B training data file',type=str)
-    parser.add_argument('-C','--c-training-data-filename',help='path to shuffled region B training data file',type=str)
-
-    # Tuning data filenames
-    parser.add_argument('-a','--a-tuning-data-filename',help='path to region A tuning data file',type=str)
-    parser.add_argument('-b','--b-tuning-data-filename',help='path to region B tuning data file',type=str)
-    parser.add_argument('-c','--c-tuning-data-filename',help='path to shuffled region B tuning data file',type=str)
-
-
-    # Output prefix
-    parser.add_argument('-o','--output-pickle-filename',type=str,default='tmp.pkl')
-
-    # Options
-    parser.add_argument('-k','--random-search',help='if hyperparameters should be randomly set',action='store_true')
-    parser.add_argument('-v','--save',help='if the trained model should be saved after training',action='store_true')
-    parser.add_argument('-d','--sample-data',help='if training data should be sampled',action='store_true')
-
-    # Hyperparameters for training
-    parser.add_argument('-r','--neg-data-ratio',help='ratio of negative samples to positive samples',type=int,default=1)
-    parser.add_argument('-s', '--seed', help='random seed', type=int, default=1)
-    # parser.add_argument('-w', '--random-search-n', help='number of hyperparameter combinations to try during random search', type=int, default=10)
-    parser.add_argument('-z','--chunk-size',help='number of samples to read at a time before building a sparse matrix',type=int,default=1000)
-    parser.add_argument('-tr','--positive-training-data-size',help='number of samples in positive training data',type=int,default=50000)
-    parser.add_argument('-va','--positive-tuning-data-size',help='number of samples in positive tuning data',type=int,default=5000)
-    parser.add_argument('-t','--num-trees',help='number of trees in a random forest',type=int,default=10)
-
-
-    # Feature information --fixed
-    parser.add_argument('-n','--num-features',help='number of features in input vector',type=int,default=6819)
-    #parser.add_argument('-i','--rnaseq-min',help='minimum expression level in RNA-seq data',type=float,default=8e-05)
-    #parser.add_argument('-x','--rnaseq-max',help='maximum expression level in RNA-seq data',type=float,default=1.11729e06)
-
-    # Hyperparameters for random forest
-    parser.add_argument('-md','--max-depth',type=str,default="None")
-    parser.add_argument('-mss','--min-samples-split',type=int,default=2)
-    parser.add_argument('-msl','--min-samples-leaf',type=int, default=32)
-    parser.add_argument('-maf','--max_features',type=str,default="auto")
-    parser.add_argument('-bs', '--bootstrap', action='store_true')
-
+    parser = argparse.ArgumentParser(
+        prog="base_maker",
+        description="Aggregate species-specific features for each training/test sample",
+    )
+    parser.add_argument("-p", "--position-filename", type=str, help="path to position file")
+    # parser.add_argument('-ca','--cage-dir',type=str,help='path to directory containing processed CAGE feature file')
+    parser.add_argument(
+        "-ch",
+        "--chromhmm-list-file",
+        type=str,
+        help="path to file with list of ChromHMM feature files",
+    )
+    parser.add_argument(
+        "-dn",
+        "--dnasechipseq-list-file",
+        type=str,
+        help="path to file with list of DNase-seq and ChIP-seq feature files",
+    )
+    # parser.add_argument('-rn','--rnaseq-dir',type=str,help='path to directory containing processed RNA-seq feature file')
+    parser.add_argument("-c", "--chrom", type=str, help="chromosome to generate data for", default="all")
+    parser.add_argument(
+        "-chn",
+        "--chromhmm-num-states",
+        type=int,
+        help="number of ChromHMM states (currently: 25 for human, 15 for mouse)",
+    )
+    parser.add_argument(
+        "-f",
+        "--frac-feature",
+        help="use fraction of overlap as features instead of binary",
+        action="store_true",
+    )
+    parser.add_argument(
+        "-w",
+        "--window-size",
+        type=int,
+        help="size of genomic windows in bp",
+    )
+    parser.add_argument("-o", "--output-filename", type=str, help="path to output file")
+    parser.add_argument(
+        "-n",
+        "--num-features",
+        type=int,
+        help="total number of features",
+    )
     args = parser.parse_args()
-    # print ('\nReading input parameters...')
-    for key, value in vars(args).items():
-        if 'max_' not in key and 'min_' not in key:
-            print ('# %s:'%key,value)
+    # print (args)
 
-    # Define range for raw RNA-seq values
-    #rnaseq_range = [args.rnaseq_min,args.rnaseq_max]
+    ### Read positions ###
+    df = pd.read_table(args.position_filename, header=None, names=["chr", "start", "end", "index"])
+    if args.chrom != "all":
+        df = df[df["chr"] == args.chrom]
+        # print('\t%s positions to process in %s' % (len(df), args.chrom))
+    df = df.sort_values(by="index").values
+    chrs = df[:, 0]  # chromsomes
+    starts = df[:, 1]  # start positions
+    ends = df[:, 2]  # end positions
+    position_indices = df[:, 3]  # position indices
+    # print('\t%s positions to process in' % len(position_indices))
 
-    # Read training data
-    # print ('\nReading training data...')
-    files_to_read = [gzip.open(args.a_training_data_filename, 'rb'),
-                     gzip.open(args.b_training_data_filename, 'rb'),
-                     gzip.open(args.a_training_data_filename, 'rb'),
-                     gzip.open(args.c_training_data_filename, 'rb')]
-    training_inputs,training_labels = readData(files_to_read,args.positive_training_data_size,args.chunk_size,args.num_features)#, rnaseq_range)
+    ### Read features from multiple files and write to one output file ###
+    # Read features
+    active_indices = readFeatures(
+        args.dnasechipseq_list_file,
+        args.chromhmm_list_file,
+        args.chromhmm_num_states,
+        set(position_indices),
+        args.frac_feature,
+    )
 
-    # print('\nReading tuning data...')
-    files_to_read = [gzip.open(args.a_tuning_data_filename, 'rb'),
-                     gzip.open(args.b_tuning_data_filename, 'rb'),
-                     gzip.open(args.a_tuning_data_filename, 'rb'),
-                     gzip.open(args.c_tuning_data_filename, 'rb')]
-    tuning_inputs, tuning_labels = readData(files_to_read, args.positive_tuning_data_size, args.chunk_size, args.num_features)# ,rnaseq_range)
+    # Write to output
+    with open(args.output_filename, "w") as f:
+        writeFormattedFeatures(
+            f,
+            chrs,
+            starts,
+            ends,
+            position_indices,
+            active_indices,
+            args.frac_feature,
+        )
 
-    # print('\nResult')
-    print('seed\tnr\tmd\tmss\tmsl\tmaf\tbs\ttmse\ttauroc\ttauprc\ttmean\ttpmean\ttnmean\tvmse\tvauroc\tvauprc\tvmean\tvpmean\tvnmean')
-
-    if args.random_search:
-        max_depth, min_samples_split, min_samples_leaf, max_features, bootstrap = setTrainingHyperParameters(args.seed, args.num_features)
-    else:
-        max_depth, min_samples_split, min_samples_leaf, max_features, bootstrap = args.max_depth, args.min_samples_split, args.min_samples_leaf, args.max_features, args.bootstrap
-        # max_features = None if max_features=='None' else max_features
-        max_depth = None if max_depth=='None' else int(max_depth)
-
-    hyperparameters = [args.seed, args.neg_data_ratio, max_depth, min_samples_split, min_samples_leaf, max_features, bootstrap]
-
-    ####### Training starts here #######
-    #print ('\nTraining...')
-    clf = RandomForestClassifier(random_state=args.seed,
-                                 n_estimators=args.num_trees,
-                                 max_depth=max_depth,
-                                 class_weight={0:args.neg_data_ratio,1:1},
-                                 min_samples_split=min_samples_split,
-                                 min_samples_leaf=min_samples_leaf,
-                                 max_features=max_features,
-                                 bootstrap=bootstrap,
-                                 n_jobs=-1)
-    clf.fit(training_inputs,training_labels)
-    ####### Training ends here #######
-
-    # Evaluate
-    training_result = eval(clf,training_inputs,training_labels)
-    tuning_result = eval(clf,tuning_inputs,tuning_labels)
-
-    # Print out result
-    print('\t'.join([str(s) for s in hyperparameters + [round(s,6) for s in training_result+tuning_result]]))
-
-    # Save model if specified
-    if args.save:
-        fn = args.output_pickle_filename if args.output_pickle_filename.endswith(".pkl") else args.output_pickle_filename+'.pkl'
-        joblib.dump(clf,fn)
 
 main()

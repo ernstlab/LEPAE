@@ -1,0 +1,30 @@
+min_dist: 1000
+max_dist: 100000
+window_size: 1000
+
+seed: 413666
+
+training_data_size: 100000
+tuning_data_size: 10000
+num_trees: 10 #100
+random_search_n: 10 #10
+
+num_dnasechipseq_experiments: 3337
+num_chromhmm_experiments: 127
+num_chromhmm_states: 25
+
+paths:
+  # working_dir: "/u/project/ernst/skwon94/pairwise_scoring/"
+  data_dir: "/u/project/ernst/skwon94/pairwise_scoring/data/"
+  dnasechipseq_data_dir: "/u/project/ernst/skwon94/pairwise_scoring/feature/hg38_DNaseChIPseq/"
+  chromhmm_data_dir: "/u/project/ernst/skwon94/pairwise_scoring/feature/hg38_ChromHMM/"
+  dnasechipseq_experiment_paths_file: "/u/project/ernst/skwon94/pairwise_scoring/files_hg38_DNaseChIPseq.txt"
+  chromhmm_experiment_paths_file: "/u/project/ernst/skwon94/pairwise_scoring/files_hg38_ChromHMM.txt"
+  chrom_size_file: "/u/project/ernst/skwon94/pairwise_scoring/hg38.chrom.sizes"
+  output_dir: "/u/project/ernst/skwon94/pairwise_scoring/model/gw_1kb"
+  binary_bed_annot_dir: "/u/project/ernst/skwon94/aligned_model/validation/bed_files/binary"
+
+frac_feature: False
+
+# Peak call data from DNase and ChIP-seq: 3,337 DNase-seq and TF and histone mark ChIP-seq experiments from ENCODE4 and Roadmap with hg38 as genome assembly
+# ChromHMM chromatin state annotation: 25-state model learned from imputed data for 127 epigenomes from Roadmap (lifted over from hg19 to hg38)
