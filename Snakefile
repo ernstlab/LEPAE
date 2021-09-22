@@ -22,8 +22,17 @@ num_tuning_chrom = 3
 training_chrom = dict()
 tuning_chrom = dict()
 for heldout_chrom in all_chroms:
-    sampled_chrom = list(random.sample([c for c in all_chroms if c != heldout_chrom and c != "chrX"], num_tuning_chrom))
-    training_chrom[heldout_chrom] = [c for c in all_chroms if c != heldout_chrom and c != "chrX" and c not in sampled_chrom]
+    sampled_chrom = list(
+        random.sample(
+            [c for c in all_chroms if c != heldout_chrom and c != "chrX"],
+            num_tuning_chrom,
+        )
+    )
+    training_chrom[heldout_chrom] = [
+        c
+        for c in all_chroms
+        if c != heldout_chrom and c != "chrX" and c not in sampled_chrom
+    ]
     tuning_chrom[heldout_chrom] = sampled_chrom
 
 # Random forest training parameters
@@ -34,7 +43,9 @@ random_search_n = config["random_search_n"]
 
 # Paths to input files/directories
 path_chrom_size_file = config["paths"]["chrom_size_file"]
-dnasechipseq_experiment_paths_file = config["paths"]["dnasechipseq_experiment_paths_file"]
+dnasechipseq_experiment_paths_file = config["paths"][
+    "dnasechipseq_experiment_paths_file"
+]
 dnasechipseq_data_dir = config["paths"]["dnasechipseq_data_dir"]
 chromhmm_experiment_paths_file = config["paths"]["chromhmm_experiment_paths_file"]
 chromhmm_data_dir = config["paths"]["dnasechipseq_data_dir"]
@@ -42,7 +53,10 @@ chromhmm_data_dir = config["paths"]["dnasechipseq_data_dir"]
 # Input features
 num_dnasechipseq_experiments = config["num_dnasechipseq_experiments"]
 num_chromhmm_experiments = config["num_chromhmm_experiments"]
-num_features = num_dnasechipseq_experiments + num_chromhmm_experiments * config["num_chromhmm_states"]
+num_features = (
+    num_dnasechipseq_experiments
+    + num_chromhmm_experiments * config["num_chromhmm_states"]
+)
 dnasechipseq_experiments = dict()
 with open(dnasechipseq_experiment_paths_file, "r") as f:
     for i in range(num_dnasechipseq_experiments):
@@ -59,7 +73,9 @@ with open(chromhmm_experiment_paths_file, "r") as f:
 
 # Paths to output directories
 output_dir = config["paths"]["output_dir"]
-dnasechipseq_output_dir = os.path.join(output_dir, "feature/intersect/hg38_DNaseChIPseq")
+dnasechipseq_output_dir = os.path.join(
+    output_dir, "feature/intersect/hg38_DNaseChIPseq"
+)
 chromhmm_output_dir = os.path.join(output_dir, "feature/intersect/hg38_ChromHMM")
 
 # Output file prefixes
@@ -84,7 +100,7 @@ localrules:
 # Target rule
 rule all:
     input:
-        os.path.join(output_dir, "prediction/%s.bedpe.gz" % pred_prefix)
+        os.path.join(output_dir, "prediction/%s.bedpe.gz" % pred_prefix),
 
 
 # Rule to run if starting over
@@ -116,7 +132,9 @@ rule run_intersect_dnasechipseq:
     input:
         window_file=os.path.join(output_dir, "window/all_windows.bed.gz"),
     params:
-        experiment_path=lambda wildcards: dnasechipseq_experiments[wildcards.experiment],
+        experiment_path=lambda wildcards: dnasechipseq_experiments[
+            wildcards.experiment
+        ],
     output:
         os.path.join(dnasechipseq_output_dir, "{experiment}.bed.gz"),
     shell:
@@ -237,14 +255,28 @@ rule hyperparam_search:
         tuning_data_size=tuning_data_size,
         num_trees=num_trees,
         window_size=window_size,
-        output_filename_prefix=os.path.join(output_dir, "classifier/{heldout_chrom}/hyperparam_search_dist"),
+        output_filename_prefix=os.path.join(
+            output_dir, "classifier/{heldout_chrom}/hyperparam_search_dist"
+        ),
         seed=seed,
         frac_feature="-f" if frac_feature else " ",
-        training_data_filenames=lambda wildcards: expand(os.path.join(output_dir, "data/{chrom}.window"), chrom=training_chrom[wildcards.heldout_chrom]),
-        tuning_data_filenames=lambda wildcards: expand(os.path.join(output_dir, "data/{chrom}.window"), chrom=tuning_chrom[wildcards.heldout_chrom]),
+        training_data_filenames=lambda wildcards: expand(
+            os.path.join(output_dir, "data/{chrom}.window"),
+            chrom=training_chrom[wildcards.heldout_chrom],
+        ),
+        tuning_data_filenames=lambda wildcards: expand(
+            os.path.join(output_dir, "data/{chrom}.window"),
+            chrom=tuning_chrom[wildcards.heldout_chrom],
+        ),
     output:
-        os.path.join(output_dir, "classifier/{heldout_chrom}/hyperparam_search_dist{dist}.best_hyperparam.txt"),
-        os.path.join(output_dir, "classifier/{heldout_chrom}/hyperparam_search_dist{dist}.progress.txt"),
+        os.path.join(
+            output_dir,
+            "classifier/{heldout_chrom}/hyperparam_search_dist{dist}.best_hyperparam.txt",
+        ),
+        os.path.join(
+            output_dir,
+            "classifier/{heldout_chrom}/hyperparam_search_dist{dist}.progress.txt",
+        ),
     threads: 4
     shell:
         """
@@ -267,8 +299,13 @@ rule hyperparam_search:
 # As done in hyperparam_search, flipped pairs are added to training and tuning data, doubling the data size.
 rule train:
     input:
-        best_hyperparam_file=os.path.join(output_dir, "classifier/{heldout_chrom}/hyperparam_search_dist{dist}.best_hyperparam.txt"),
-        all_data_filenames=expand(os.path.join(output_dir, "data/{chrom}.window"), chrom=all_chroms),
+        best_hyperparam_file=os.path.join(
+            output_dir,
+            "classifier/{heldout_chrom}/hyperparam_search_dist{dist}.best_hyperparam.txt",
+        ),
+        all_data_filenames=expand(
+            os.path.join(output_dir, "data/{chrom}.window"), chrom=all_chroms
+        ),
     params:
         random_search_n=random_search_n,
         num_features=num_features,
@@ -276,18 +313,38 @@ rule train:
         tuning_data_size=tuning_data_size,
         num_trees=num_trees,
         window_size=window_size,
-        output_filename_prefix=os.path.join(output_dir, "classifier/{heldout_chrom}/train_dist"),
+        output_filename_prefix=os.path.join(
+            output_dir, "classifier/{heldout_chrom}/train_dist"
+        ),
         seed=seed,
         frac_feature="-f" if frac_feature else " ",
-        training_data_filenames=lambda wildcards: expand(os.path.join(output_dir, "data/{chrom}.window"), chrom=training_chrom[wildcards.heldout_chrom]),
-        tuning_data_filenames=lambda wildcards: expand(os.path.join(output_dir, "data/{chrom}.window"), chrom=tuning_chrom[wildcards.heldout_chrom]),
-        test_data_filenames=lambda wildcards: expand(os.path.join(output_dir, "data/{chrom}.window"), chrom=wildcards.heldout_chrom),
+        training_data_filenames=lambda wildcards: expand(
+            os.path.join(output_dir, "data/{chrom}.window"),
+            chrom=training_chrom[wildcards.heldout_chrom],
+        ),
+        tuning_data_filenames=lambda wildcards: expand(
+            os.path.join(output_dir, "data/{chrom}.window"),
+            chrom=tuning_chrom[wildcards.heldout_chrom],
+        ),
+        test_data_filenames=lambda wildcards: expand(
+            os.path.join(output_dir, "data/{chrom}.window"),
+            chrom=wildcards.heldout_chrom,
+        ),
     output:
-        os.path.join(output_dir, "classifier/{heldout_chrom}/train_dist{dist}.progress.txt"),
+        os.path.join(
+            output_dir, "classifier/{heldout_chrom}/train_dist{dist}.progress.txt"
+        ),
         os.path.join(output_dir, "classifier/{heldout_chrom}/train_dist{dist}.pkl"),
-        os.path.join(output_dir, "classifier/{heldout_chrom}/train_dist{dist}.training_pred.txt.gz"),
-        os.path.join(output_dir, "classifier/{heldout_chrom}/train_dist{dist}.tuning_pred.txt.gz"),
-        os.path.join(output_dir, "classifier/{heldout_chrom}/train_dist{dist}.test_pred.txt.gz"),
+        os.path.join(
+            output_dir,
+            "classifier/{heldout_chrom}/train_dist{dist}.training_pred.txt.gz",
+        ),
+        os.path.join(
+            output_dir, "classifier/{heldout_chrom}/train_dist{dist}.tuning_pred.txt.gz"
+        ),
+        os.path.join(
+            output_dir, "classifier/{heldout_chrom}/train_dist{dist}.test_pred.txt.gz"
+        ),
     threads: 4
     shell:
         """
@@ -311,7 +368,9 @@ rule train:
 # Make predictions for the chromosome that was held out specifically for prediction.
 rule predict:
     input:
-        classifier_file=os.path.join(output_dir, "classifier/{chrom}/train_dist{dist}.pkl"),
+        classifier_file=os.path.join(
+            output_dir, "classifier/{chrom}/train_dist{dist}.pkl"
+        ),
         input_filename=os.path.join(output_dir, "data/{chrom}.window"),
     params:
         num_features=num_features,
@@ -319,7 +378,9 @@ rule predict:
         seed=seed,
         frac_feature="-f" if frac_feature else " ",
     output:
-        os.path.join(output_dir, "prediction/{chrom}/%s_dist{dist}.txt.gz" % pred_prefix),
+        os.path.join(
+            output_dir, "prediction/{chrom}/%s_dist{dist}.txt.gz" % pred_prefix
+        ),
     threads: 4
     shell:
         """
@@ -344,7 +405,9 @@ rule generate_juicer_short:
             dist=all_dists,
         ),
     params:
-        input_dirs=expand(os.path.join(output_dir, "prediction/{chrom}"), chrom=all_chroms),
+        input_dirs=expand(
+            os.path.join(output_dir, "prediction/{chrom}"), chrom=all_chroms
+        ),
         input_prefix=pred_prefix + "_dist",
         input_suffix=".txt.gz",
     output:
