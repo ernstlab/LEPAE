@@ -121,7 +121,7 @@ def readChromHmmFeature(
         if os.stat(chromhmm_file).st_size == 0:  # skip if file is empty (unlikely to happen)
             continue
         with gzip.open(chromhmm_file, "rb") as f:
-            positions_found = 0
+            # positions_found = 0
             for line in f:
                 l = line.strip().split()
                 if frac_feature:
@@ -143,14 +143,15 @@ def readChromHmmFeature(
                 else:
                     position = int(l[0].decode("utf-8"))
                     if position in input_positions:
-                        positions_found += 1
-                        states = l[1].decode("utf-8").split(",")
+                        # positions_found += 1
+                        state = num_current_features + int(l[1].decode("utf-8")) - 1
                         # state = int(state[1:]) if state.startswith('U') else int(state)
-                        active_indices[position] += [num_current_features + (int(s) - 1) for s in states]
+                        # active_indices[position] += [num_current_features + (int(s) - 1) for s in states]
+                        active_indices[position].append(state)
 
                     # Optimization added 10 July 2019
-                    if positions_found == len(input_positions):
-                        break
+                    # if positions_found == len(input_positions):
+                    #     break
         num_current_features += chromhmm_num_states
 
         # Status output
@@ -224,9 +225,7 @@ def readFeatures(
     input_positions,
     frac_feature,
 ):
-    active_indices = defaultdict(
-        list
-    )  # Key: position index, value: non-zero feature index for the given position index
+    active_indices = defaultdict(list)  # Key: position index, value: non-zero feature index for the given position index
     # cage_file = os.listdir(cage_dir)[0]
     # df = pd.read_table(cage_dir+cage_file,engine='c',header=None).as_matrix()
     # features = df[:,1:] # Presence of CAGE peak in each position in each cell-type
@@ -313,15 +312,12 @@ def writeFormattedFeatures(f, chrs, starts, ends, position_indices, active_indic
             d = dict(sorted(active_indices[position_indices[i]]))
             # print(i, tp, d)
             a, b = d.keys(), d.values()
-            tp = (
-                "\t|\t"
-                + "\t".join(["%d" % s for s in a])
-                + "\t|\t"
-                + "\t".join(["%.6f" % (s / window_size) for s in b])
-            )
+            tp = "\t|\t" + "\t".join(["%d" % s for s in a]) + "\t|\t" + "\t".join(["%.6f" % (s / window_size) for s in b])
         else:
             t = sorted(list(set(active_indices[position_indices[i]])))
             tp = "\t|\t" + "\t".join([str(s) for s in t])
+            if position_indices[i] == 165510:
+                print(active_indices[position_indices[i]])
         f.write(tp)  # gzf.write(tp.encode())
 
         # # Third, write real/non-binary values (RNA-seq expression levels)

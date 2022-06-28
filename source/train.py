@@ -1,409 +1,423 @@
-import argparse, math, sys, scipy.sparse, gzip, random, numpy as np, joblib, linecache, pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+import argparse, math, sys, scipy.sparse, gzip, random, numpy as np, joblib, linecache, pandas as pd, itertools, copy
+from collections import OrderedDict
+
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import roc_curve, auc, average_precision_score, mean_squared_error
 
+import torch
+import torch.nn as nn
 
-def setTraininghyperparams(seed, num_features):
-    random.seed(seed)
-    max_depth = random.choice([32, 64, 128, 256])  # md (n=4)
-    min_samples_split = random.choice([0.001, 0.002, 0.005, 0.01])  # mss (n=4)
-    min_samples_leaf = random.choice([0.001, 0.002, 0.005, 0.01])  # msl (n=4)
-    max_features = random.choice(["auto", "sqrt", "log2"])  # maf (n=3)
-    bootstrap = True  # (n=1)
-    return max_depth, min_samples_split, min_samples_leaf, max_features, bootstrap
+from shared import *
+
+NUM_WORKERS = 4
+FIXED_SEED = 413666
 
 
-def readData(filenames, pairwise_dist, window_size, num_windows, num_features, frac_feature):
-
-    # 1. Define number of lines to read/skip
-    num_lines = np.array([len(open(fn).readlines()) for fn in filenames])  # number of lines in each input file
-    num_lines_to_sample = np.floor(
-        num_windows * num_lines / np.sum(num_lines)
-    )  # number of lines to sample from each input file
-    while sum(num_lines_to_sample) < num_windows:  # adjust the number of lines to sample if needed
-        num_lines_to_sample[random.randrange(len(filenames))] += 1
-    num_lines_between_windows = int(
-        pairwise_dist / window_size
-    )  # number of lines to skip to define pairs with the specified pairwise distance
-    print(
-        "Number of lines between %d-kb windows that are %d kb apart: %d"
-        % (
-            int(window_size / 1000),
-            int(pairwise_dist / 1000),
-            num_lines_between_windows,
-        )
+def setDecisionTreeHyperparams(args):
+    random.seed(args.seed)
+    hyperparam = OrderedDict()
+    hyperparam["max_depth"] = random.choice([16, 32, 64, 128, 256]) if args.random_search else args.max_depth
+    hyperparam["min_samples_split"] = (
+        random.choice([0.0005, 0.001, 0.002, 0.005, 0.01]) if args.random_search else args.min_samples_split
     )
+    hyperparam["min_samples_leaf"] = (
+        random.choice([0.0005, 0.001, 0.002, 0.005, 0.01]) if args.random_search else args.min_samples_leaf
+    )
+    hyperparam["max_features"] = "auto"
+    return hyperparam
 
-    # 2. Parse selected lines from input files
-    num_examples = 0
-    dt = float if frac_feature else bool  # data type of input features
-    row, col, data = [], [], []  # row indices, column indices, feature values for later defining a sparse matrix
-    for i in range(len(filenames)):
-        fn = filenames[i]
-        current_file_line_index = 0
 
-        # Define randomly selected line indices to read in this file
-        random_line_indices = list(
-            random.sample(range(num_lines[i] - num_lines_between_windows), int(num_lines_to_sample[i]))
-            if (num_lines[i] - num_lines_between_windows) > int(num_lines_to_sample[i])
-            else range(num_lines[i] - num_lines_between_windows)
+def setNeuralNetworkHyperparams(args):
+
+    # Choose a random number of neurons
+    def randomNumneuron():
+        return random.choice([32, 64, 128])
+
+    random.seed(args.seed)
+    hyperparam = OrderedDict()
+    hyperparam["batch_size"] = random.choice([16, 32, 64]) if args.random_search else args.batch_size
+    hyperparam["learning_rate"] = random.choice([1e-8, 1e-6, 1e-4]) if args.random_search else args.learning_rate
+    hyperparam["dropout_rate"] = random.choice([0, 0.25, 0.5]) if args.random_search else args.dropout_rate
+    hyperparam["num_neuron_init"] = randomNumneuron() if args.random_search else args.num_neuron_init
+    hyperparam["num_neuron_fin"] = randomNumneuron() if args.random_search else args.num_neuron_fin
+    return hyperparam
+
+
+def trainDT(args, training_inputs, training_labels, tuning_inputs, tuning_labels, fout):
+
+    # Define hyperparameters
+    hyperparam = setDecisionTreeHyperparams(args)
+
+    # Train a decision tree classifier
+    clf = DecisionTreeClassifier(
+        random_state=args.seed,
+        max_depth=hyperparam["max_depth"],
+        min_samples_split=hyperparam["min_samples_split"],
+        min_samples_leaf=hyperparam["min_samples_leaf"],
+        max_features=hyperparam["max_features"],
+    )
+    clf.fit(training_inputs, training_labels)
+    # Evaluate and print result
+    training_result = eval(training_labels, predictDT(clf, training_inputs))
+    tuning_result = eval(tuning_labels, predictDT(clf, tuning_inputs))
+    cols = [args.seed] + ["%.6f" % s for s in training_result + tuning_result] + list(hyperparam.values())
+    fout.write("\t".join([str(c) for c in cols]) + "\n")
+    fout.flush()
+
+    return clf, hyperparam, tuning_result[1]
+
+
+def trainNN(
+    args,
+    training_upstream_lines_to_read,
+    training_downstream_lines_to_read,
+    training_labels,
+    tuning_inputs,
+    tuning_labels,
+    fout,
+):
+
+    # Define hyperparameters
+    hyperparam = setNeuralNetworkHyperparams(args)
+
+    # Set up a Siamese neural network
+    net = SiameseNet(args.num_features, hyperparam)
+    optimizer = torch.optim.SGD(net.parameters(), lr=hyperparam["learning_rate"], momentum=0.9)
+    criterion = nn.BCELoss()  # binary cross entropy loss
+    optimizer.zero_grad()
+
+    # Determine which lines in which files to read in advance
+    bs = hyperparam["batch_size"]
+    num_batch = int(np.floor(len(training_upstream_lines_to_read) / bs) + 1)
+
+    # Start training
+    losses = []
+    aurocs = []
+    best_net = net
+    # lv = 0
+    for epoch in range(args.max_num_epoch):  # each training epoch
+        net.train()  # set to train mode
+
+        line_index = 0
+        for j in range(num_batch):  # each batch
+            current_batch_size = (
+                bs if ((j + 1) * bs) < len(training_upstream_lines_to_read) else len(training_upstream_lines_to_read) % bs
+            )
+            if current_batch_size == 0:
+                break
+
+            x, y = readBatchTorch(
+                current_batch_size,
+                args.num_features,
+                args.frac_feature,
+                training_upstream_lines_to_read,
+                training_downstream_lines_to_read,
+                training_labels,
+                line_index,
+            )
+
+            line_index += current_batch_size
+
+            # Forward + backward + optimize
+            outputs = net(x)  # forward
+            loss = criterion(outputs, y)  # calculate BCE loss
+            # lv += loss.item()
+            # training_loss.append(loss.item())
+            loss.backward()  # backward
+            optimizer.step()  # optimize
+
+            if args.debug:
+                for k in range(current_batch_size):
+                    fout.write("#debug#\t%d\t|\t" % y[k])
+                    fout.write(" ".join([str(int(s)) for s in x[k, :]]) + "\n")
+
+        net.eval()  # set to evaluation mode
+
+        # Evaluate and print result
+        training_scores, _ = predictNNFromFiles(
+            args, net, training_upstream_lines_to_read, training_downstream_lines_to_read, training_labels
         )
+        training_result = eval(training_labels, training_scores)
+        tuning_result = eval(tuning_labels, net(torch.from_numpy(tuning_inputs.todense()).float()).data)
+        current_loss = tuning_result[1]
+        current_auroc = tuning_result[2]
+        losses.append(current_loss)
+        aurocs.append(current_auroc)
+        cols = [args.seed] + ["%.6f" % s for s in training_result + tuning_result] + [epoch] + list(hyperparam.values())
+        fout.write("\t".join([str(c) for c in cols]) + "\n")
+        fout.flush()
 
-        # Define shuffled line indices to later generate negative pairs
-        shuffled_line_indices = np.random.permutation(len(random_line_indices))
+        # Save the best performing neural network
+        if args.save == True:
+            if max(aurocs) == current_auroc:
+                best_net = copy.deepcopy(net)
 
-        # Read each selected line and generate two positive pairs and two negative pairs
-        for j in random_line_indices:
-            line = linecache.getline(fn, 1 + j).strip().split("|")
-            upstream_nonzero_feature_indices = [int(s) for s in line[1].split()] if len(line) > 1 else []
-            upstream_feature_values = (
-                [float(s) for s in line[2].split()]
-                if (len(line) > 2 and frac_feature)
-                else [True] * len(upstream_nonzero_feature_indices)
-            )
+        # Check if early stopping is applicable
+        if len(aurocs) >= 5:  # allow for five epochs before checking
+            m = max(aurocs)  # best performance so far
+            if m <= 0.50001:  # never better than random
+                print("Early stopping due to poor AUROC performance")
+                break
+            if m >= aurocs[-1] and m >= aurocs[-2] and m >= aurocs[-3]:
+                # no improvement than best in the last three epochs
+                print("Early stopping due to no improvement in AUROC")
+                break
 
-            line = linecache.getline(fn, 1 + j + num_lines_between_windows).strip().split("|")
-            downstream_nonzero_feature_indices = [int(s) for s in line[1].split()] if len(line) > 1 else []
-            downstream_feature_values = (
-                [float(s) for s in line[2].split()]
-                if (len(line) > 2 and frac_feature)
-                else [True] * len(downstream_nonzero_feature_indices)
-            )
+    net.eval()  # set to evaluation mode
 
-            num_nonzero_feature_indices = len(upstream_nonzero_feature_indices) + len(
-                downstream_nonzero_feature_indices
-            )
-
-            # Positive pair
-            row += [num_examples + current_file_line_index * 4] * num_nonzero_feature_indices
-            col += upstream_nonzero_feature_indices + [num_features + s for s in downstream_nonzero_feature_indices]
-            data += upstream_feature_values + downstream_feature_values
-
-            # Flipped positive pair
-            row += [num_examples + current_file_line_index * 4 + 1] * num_nonzero_feature_indices
-            col += downstream_nonzero_feature_indices + [num_features + s for s in upstream_nonzero_feature_indices]
-            data += downstream_feature_values + upstream_feature_values
-
-            # Negative pair
-            row += [num_examples + current_file_line_index * 4 + 2] * len(upstream_nonzero_feature_indices)
-            col += upstream_nonzero_feature_indices
-            data += upstream_feature_values
-
-            row += [num_examples + shuffled_line_indices[current_file_line_index] * 4 + 2] * len(
-                downstream_nonzero_feature_indices
-            )
-            col += [num_features + s for s in downstream_nonzero_feature_indices]
-            data += downstream_feature_values
-
-            # Flipped negative pair
-            row += [num_examples + current_file_line_index * 4 + 3] * len(downstream_nonzero_feature_indices)
-            col += downstream_nonzero_feature_indices
-            data += downstream_feature_values
-
-            row += [num_examples + shuffled_line_indices[current_file_line_index] * 4 + 3] * len(
-                upstream_nonzero_feature_indices
-            )
-            col += [num_features + s for s in upstream_nonzero_feature_indices]
-            data += upstream_feature_values
-
-            current_file_line_index += 1
-
-        num_examples += current_file_line_index * 4
-
-    # 3. Define input data and positive/negative labels based on the data parsed above
-    inputs = scipy.sparse.csr_matrix((data, (row, col)), shape=(num_examples, num_features * 2), dtype=dt)
-    labels = [True, True, False, False] * int(num_examples / 4)
-
-    return (inputs, labels)
-
-
-def eval(clf, inputs, labels):
-    scores = clf.predict_proba(inputs)
-    scores = scores[:, 1]
-    mse = mean_squared_error(labels, scores)
-    fpr, tpr, _ = roc_curve(labels, scores)
-    auroc = auc(fpr, tpr)  # au-ROC
-    auprc = average_precision_score(labels, scores)  # au-PRC
-    pos_mean_score = np.mean([scores[i] for i in range(len(scores)) if labels[i] == 1])
-    neg_mean_score = np.mean([scores[i] for i in range(len(scores)) if labels[i] == 0])
-    return mse, auroc, auprc, np.mean(scores), pos_mean_score, neg_mean_score
+    return best_net, hyperparam, max(aurocs)
 
 
 def main():
     ### Input arguments ###
-    parser = argparse.ArgumentParser(
-        prog="base_maker",
-        description="Train a random forest",
-        fromfile_prefix_chars="@",
+    parent_parser = argparse.ArgumentParser(
+        prog="base_maker", description="Train a classifier", fromfile_prefix_chars="@", add_help=False
     )
 
-    # Input data filenames
-    parser.add_argument(
-        "-i",
-        "--training-data-filenames",
-        help="paths to training data files",
-        type=str,
-        nargs="+",
+    parent_parser.add_argument("-i", "--training-data-filenames", help="paths to training data files", type=str, nargs="+")
+    parent_parser.add_argument("-j", "--tuning-data-filenames", help="paths to tuning data files", type=str, nargs="+")
+    parent_parser.add_argument(
+        "-k", "--test-data-filenames", help="paths to test data files", type=str, nargs="+", default=[]
     )
-    parser.add_argument(
-        "-j",
-        "--tuning-data-filenames",
-        help="paths to tuning data files",
-        type=str,
-        nargs="+",
-    )
-    parser.add_argument(
-        "-k",
-        "--test-data-filenames",
-        help="paths to test data files",
-        type=str,
-        nargs="+",
-        default=[],
-    )
+    parent_parser.add_argument("-d", "--pairwise-dist", help="distance between windows", type=int, default=1000)
+    parent_parser.add_argument("-w", "--window-size", help="genomic window size in bp", type=int, default=1000)
+    parent_parser.add_argument("-o", "--output-filename-prefix", type=str, default="tmp")
 
-    # Pairwise distance
-    parser.add_argument(
-        "-d",
-        "--pairwise-dist",
-        help="pairwise distance between windows",
-        type=int,
-        default=1000,
-    )
-    parser.add_argument("-w", "--window-size", help="genomic window size in bp", type=int, default=1000)
-
-    # Output filename prefix
-    parser.add_argument("-o", "--output-filename-prefix", type=str, default="tmp")
-
-    # Data size
-    parser.add_argument(
+    parent_parser.add_argument(
         "-a",
         "--positive-training-data-size",
         help="number of samples in positive training data",
         type=int,
-        default=50000,
+        default=10000,
     )
-    parser.add_argument(
-        "-b",
-        "--positive-tuning-data-size",
-        help="number of samples in positive tuning data",
-        type=int,
-        default=5000,
+    parent_parser.add_argument(
+        "-b", "--positive-tuning-data-size", help="number of samples in positive tuning data", type=int, default=1000
     )
-
-    # Options
-    parser.add_argument(
-        "-m",
-        "--random-search",
-        help="if hyperparameters should be randomly set",
+    parent_parser.add_argument(
+        "--random-training-data",
+        help="if sampling of training data should be dependent on input seed",
         action="store_true",
     )
-    parser.add_argument(
-        "-v",
-        "--save",
-        help="if the trained model should be saved after training",
-        action="store_true",
-    )
-    parser.add_argument(
-        "-f",
-        "--frac-feature",
-        help="use fraction of overlap as features instead of binary",
-        action="store_true",
+    parent_parser.add_argument("-n", "--num-features", help="number of features in input vector", type=int, default=6512)
+    parent_parser.add_argument(
+        "--fixed-batch-size", help="batch size for evaluation (not a hyperparameter)", type=int, default=512
     )
 
-    # Hyperparameters for training
-    # parser.add_argument('-r','--neg-data-ratio',help='ratio of negative samples to positive samples',type=int,default=1)
-    parser.add_argument("-s", "--seed", help="random seed", type=int, default=1)
-    parser.add_argument(
-        "-r",
-        "--random-search-n",
-        help="number of hyperparameter combinations to try during random search",
+    parent_parser.add_argument(
+        "-m", "--random-search", help="if hyperparameters should be randomly set", action="store_true"
+    )
+    parent_parser.add_argument(
+        "-v", "--save", help="if the trained model should be saved after training", action="store_true"
+    )
+    parent_parser.add_argument("-f", "--frac-feature", help="use fractional features instead of binary", action="store_true")
+    parent_parser.add_argument("-u", "--debug", help="print intermediate results to debug", action="store_true")
+    parent_parser.add_argument("-s", "--seed", help="random seed", type=int, default=1)
+
+    parent_parser.add_argument("--max-num-epoch", help="maximum number of training epochs", type=int, default=10)
+
+    main_parser = argparse.ArgumentParser()
+    subparsers = main_parser.add_subparsers(help="type of classifier to train", dest="classifier", required=True)
+
+    decision_tree_parser = subparsers.add_parser(
+        "DT", help="Train a decision tree classifier", fromfile_prefix_chars="@", parents=[parent_parser]
+    )
+    # decision_tree_parser.add_argument("--hard-voting", help="make trees vote (decision tree)", action="store_true")
+    # decision_tree_parser.add_argument("--num-tree", help="number of trees (decision tree)", type=int, default=5)
+    decision_tree_parser.add_argument("--max-depth", help="maximum tree depth (decision tree)", type=int, default=32)
+    decision_tree_parser.add_argument(
+        "--min-samples-split",
+        help="minimum number of samples in a node allowed for a split (decision tree)",
+        type=float,
+        default=2,
+    )
+    decision_tree_parser.add_argument(
+        "--min-samples-leaf", help="minimum number of samples at a leaf (decision tree)", type=float, default=32
+    )
+    decision_tree_parser.add_argument(
+        "--max-features", help="maximum features considered for split (decision tree)", type=str, default="auto"
+    )
+    # decision_tree_parser.add_argument(
+    #     "--bootstrap", help="whether to bootstrap samples (decision tree)", action="store_true"
+    # )
+
+    neural_network_parser = subparsers.add_parser(
+        "NN", help="Train a neural network classifier", fromfile_prefix_chars="@", parents=[parent_parser]
+    )
+
+    neural_network_parser.add_argument("--batch-size", help="batch size", type=int, default=128)
+    neural_network_parser.add_argument("--learning-rate", help="learning_rate", type=float, default=0.1)
+    neural_network_parser.add_argument("--dropout-rate", help="dropout rate", type=float, default=0.1)
+
+    neural_network_parser.add_argument(
+        "--num-layer-init", help="number of hidden layer in initial sub-networks", type=int, default=1
+    )
+    neural_network_parser.add_argument(
+        "--num-layer-fin", help="number of hidden layer in final sub-network", type=int, default=1
+    )
+    neural_network_parser.add_argument(
+        "--num-neuron-init",
+        help="number of neurons in the initial sub-network",
         type=int,
-        default=1,
+        default=8,
     )
-    # parser.add_argument('-z','--chunk-size',help='number of samples to read at a time before building a sparse matrix',type=int,default=1000)
-    parser.add_argument(
-        "-t",
-        "--num-trees",
-        help="number of trees in a random forest",
-        type=int,
-        default=10,
+    neural_network_parser.add_argument(
+        "--num-neuron-fin", help="number of neurons in the final sub-network", type=int, default=8
+    )
+    # neural_network_parser.add_argument(
+    #     "--criteria",
+    #     help="criteria for choosing the best classifier or epoch",
+    #     type=str,
+    #     default="auroc",
+    #     choices=["auroc", "loss"],
+    # )
+
+    jaccard_parser = subparsers.add_parser(
+        "Jaccard", help="Report Jaccard index (no training required)", parents=[parent_parser]
     )
 
-    # Feature information --fixed
-    parser.add_argument(
-        "-n",
-        "--num-features",
-        help="number of features in input vector",
-        type=int,
-        default=6819,
-    )
-    # parser.add_argument('-i','--rnaseq-min',help='minimum expression level in RNA-seq data',type=float,default=8e-05)
-    # parser.add_argument('-x','--rnaseq-max',help='maximum expression level in RNA-seq data',type=float,default=1.11729e06)
+    args = main_parser.parse_args()
 
-    # Hyperparameters for random forest
-    parser.add_argument("-md", "--max-depth", type=str, default="None")
-    parser.add_argument("-mss", "--min-samples-split", type=float, default=2)
-    parser.add_argument("-msl", "--min-samples-leaf", type=float, default=32)
-    parser.add_argument("-maf", "--max_features", type=str, default="auto")
-    parser.add_argument("-bs", "--bootstrap", action="store_true")
+    if args.classifier in ["DT", "NN"]:
 
-    args = parser.parse_args()
+        # Print out input arguments to progress file
+        fout = open(args.output_filename_prefix + ".progress.txt", "w")
+        for key, value in vars(args).items():
+            if "max_" not in key and "min_" not in key:
+                fout.write("# %s: %s\n" % (key, value))
 
-    fout = open(args.output_filename_prefix + ".progress.txt", "w")
-
-    # print ('\nReading input parameters...')
-    for key, value in vars(args).items():
-        if "max_" not in key and "min_" not in key:
-            fout.write("# %s: %s\n" % (key, value))
-
-    # Define range for raw RNA-seq values
-    # rnaseq_range = [args.rnaseq_min,args.rnaseq_max]
+        # Write header
+        fout.write("seed\t")
+        eval_output = ["loss", "mse", "auroc", "auprc", "pmean", "nmean"]
+        fout.write("\t".join([a + b for (a, b) in list(itertools.product(["tr", "va"], eval_output))]) + "\t")
+        if args.classifier == "DT":
+            fout.write("\t".join(["max_depth", "min_samples_split", "min_samples_leaf", "max_features"]))
+        elif args.classifier == "NN":
+            fout.write(
+                "\t".join(["epoch", "batch_size", "learning_rate", "dropout_rate", "num_neuron_init", "num_neuron_fin"])
+            )
+        fout.write("\n")
 
     # Set random seed
     random.seed(args.seed)
     np.random.seed(args.seed)
 
-    # Read training data
-    training_inputs, training_labels = readData(
+    training_upstream_lines_to_read, training_downstream_lines_to_read, training_labels = determineLinesToRead(
+        args,
         args.training_data_filenames,
-        args.pairwise_dist,
-        args.window_size,
         args.positive_training_data_size,
-        args.num_features,
-        args.frac_feature,
+        args.seed if args.random_training_data else FIXED_SEED,
     )
-    # print(training_inputs[0, :])
-    # print(np.sum(training_inputs, axis=0), np.sum(training_inputs, axis=1))
+    if args.debug:
+        fout.write("\n".join(["#debug#\tp\t" + str(s) for s in training_upstream_lines_to_read]) + "\n")
+        fout.write("\n".join(["#debug#\tn\t" + str(s) for s in training_downstream_lines_to_read]) + "\n")
+        fout.write("\n".join(["#debug#\tl\t" + str(s) for s in training_labels]) + "\n")
 
-    # Read tuning data
-    tuning_inputs, tuning_labels = readData(
-        args.tuning_data_filenames,
-        args.pairwise_dist,
-        args.window_size,
-        args.positive_tuning_data_size,
-        args.num_features,
-        args.frac_feature,
+    tuning_inputs, tuning_labels = readDataCSR(
+        args, *determineLinesToRead(args, args.tuning_data_filenames, args.positive_tuning_data_size)
     )
-
-    test_data_available = args.test_data_filenames
-    # Read test data if provided
-    if test_data_available:
-        test_inputs, test_labels = readData(
-            args.test_data_filenames,
-            args.pairwise_dist,
-            args.window_size,
-            args.positive_tuning_data_size,
-            args.num_features,
-            args.frac_feature,
+    if args.test_data_filenames:
+        test_inputs, test_labels = readDataCSR(
+            args, *determineLinesToRead(args, args.test_data_filenames, args.positive_tuning_data_size)
         )
 
-    fout.write(
-        "seed\tmd\tmss\tmsl\tmaf\tbs\ttrmse\ttrauroc\ttrauprc\ttrmean\ttrpmean\ttrnmean\tvamse\tvaauroc\tvaauprc\tvamean\tvapmean\tvanmean"
-    )
-    if test_data_available:
-        fout.write("\ttemse\tteauroc\tteauprc\ttemean\ttepmean\ttenmean")
-    fout.write("\n")
+    ### TRAIN ###
+    if args.classifier == "DT":
+        training_inputs, training_labels = readDataCSR(
+            args, training_upstream_lines_to_read, training_downstream_lines_to_read, training_labels
+        )
+        clf, hyperparam, auroc = trainDT(args, training_inputs, training_labels, tuning_inputs, tuning_labels, fout)
 
-    # Train and report performance metrics
-    for i in range(args.random_search_n):
-        if args.random_search:
-            (
-                max_depth,
-                min_samples_split,
-                min_samples_leaf,
-                max_features,
-                bootstrap,
-            ) = setTraininghyperparams(int(i * args.seed), args.num_features)
-        else:
-            max_depth, min_samples_split, min_samples_leaf, max_features, bootstrap = (
-                args.max_depth,
-                args.min_samples_split,
-                args.min_samples_leaf,
-                args.max_features,
-                args.bootstrap,
+        if args.save:
+            joblib.dump(clf, args.output_filename_prefix + ".pkl")  # pickle model
+
+            writeScores(
+                "%s.training_pred.txt.gz" % args.output_filename_prefix,
+                args.frac_feature,
+                training_labels,
+                predictDT(clf, training_inputs),
             )
-            max_depth = None if max_depth == "None" else int(max_depth)
-
-        seed = i if args.random_search else args.seed
-        hyperparams = [
-            seed,
-            max_depth,
-            min_samples_split,
-            min_samples_leaf,
-            max_features,
-            bootstrap,
-        ]
-
-        ### Training starts here ###
-        clf = RandomForestClassifier(
-            random_state=args.seed,
-            n_estimators=args.num_trees,
-            max_depth=max_depth,
-            min_samples_split=min_samples_split,
-            min_samples_leaf=min_samples_leaf,
-            max_features=max_features,
-            bootstrap=bootstrap,
-            n_jobs=-1,
-        )
-        clf.fit(training_inputs, training_labels)
-        ### Training ends here ###
-
-        # Evaluate
-        training_result = eval(clf, training_inputs, training_labels)
-        tuning_result = eval(clf, tuning_inputs, tuning_labels)
-        test_result = eval(clf, test_inputs, test_labels) if test_data_available else ()
-
-        # Print out result
-        fout.write(
-            "\t".join(
-                [str(s) for s in hyperparams] + ["%.6f" % s for s in training_result + tuning_result + test_result]
+            writeScores(
+                "%s.tuning_pred.txt.gz" % args.output_filename_prefix,
+                args.frac_feature,
+                tuning_labels,
+                predictDT(clf, tuning_inputs),
             )
-            + "\n"
+            if args.test_data_filenames:
+                writeScores(
+                    "%s.test_pred.txt.gz" % args.output_filename_prefix,
+                    args.frac_feature,
+                    test_labels,
+                    predictDT(clf, test_inputs),
+                )
+
+    elif args.classifier == "NN":
+        torch.manual_seed(args.seed)
+        torch.use_deterministic_algorithms(True)
+
+        clf, hyperparam, auroc = trainNN(
+            args,
+            training_upstream_lines_to_read,
+            training_downstream_lines_to_read,
+            training_labels,
+            tuning_inputs,
+            tuning_labels,
+            fout,
         )
 
-        # If this is not for hyperparameter search, train one model and quit
-        if not args.random_search:
-            break
+        if args.save:
+            joblib.dump(clf, args.output_filename_prefix + ".pkl")  # pickle model
 
-    fout.close()
+            training_scores, _ = predictNNFromFiles(
+                args, clf, training_upstream_lines_to_read, training_downstream_lines_to_read, training_labels, False
+            )
+            writeScores(
+                "%s.training_pred.txt.gz" % args.output_filename_prefix,
+                args.frac_feature,
+                training_labels,
+                training_scores,
+            )
+            writeScores(
+                "%s.tuning_pred.txt.gz" % args.output_filename_prefix,
+                args.frac_feature,
+                tuning_labels,
+                clf(torch.from_numpy(tuning_inputs.todense()).float()).data,
+            )
+            if args.test_data_filenames:
+                writeScores(
+                    "%s.test_pred.txt.gz" % args.output_filename_prefix,
+                    args.frac_feature,
+                    test_labels,
+                    clf(torch.from_numpy(test_inputs.todense()).float()).data,
+                    test_inputs if args.debug else [],
+                )
 
-    if args.random_search:
-        df = pd.read_table(args.output_filename_prefix + ".progress.txt", comment="#")
-        df = df.sort_values(by="vaauroc", ascending=False)
+    elif args.classifier == "Jaccard" and args.save:
+        # training_inputs, training_labels = readDataCSR(
+        #     args, training_upstream_lines_to_read, training_downstream_lines_to_read, training_labels
+        # )
 
-        with open(args.output_filename_prefix + ".best_hyperparam.txt", "w") as f:
-            for p in ["md", "mss", "msl", "maf"]:
-                f.write("-%s\n%s\n" % (p, str(df[p].iloc[0])))
-            if df["bs"].iloc[0]:
-                f.write("-bs\n")
+        # writeScores(
+        #     "%s.training_pred.txt.gz" % args.output_filename_prefix,
+        #     args.frac_feature,
+        #     training_labels,
+        #     computeJaccardIndex(args, training_inputs),
+        # )
+        # writeScores(
+        #     "%s.tuning_pred.txt.gz" % args.output_filename_prefix,
+        #     args.frac_feature,
+        #     tuning_labels,
+        #     computeJaccardIndex(args, tuning_inputs),
+        # )
+        if args.test_data_filenames:
+            writeScores(
+                "%s.test_pred.txt.gz" % args.output_filename_prefix,
+                args.frac_feature,
+                test_labels,
+                computeJaccardIndex(args, test_inputs),
+            )
 
-    # Save model and generate predictions for input data if specified
-    elif args.save:
-
-        # Pickle model
-        joblib.dump(clf, args.output_filename_prefix + ".pkl")
-
-        # Make prediction on training data
-        training_y_pred = clf.predict_proba(training_inputs)[:, 1]
-        with gzip.open(args.output_filename_prefix + ".training_pred.txt.gz", "wb") as fout:
-            for i in range(len(training_labels)):
-                l = "%d\t%.6f\n" % (training_labels[i], training_y_pred[i])
-                fout.write(l.encode())
-
-        # Make prediction on tuning data
-        tuning_y_pred = clf.predict_proba(tuning_inputs)[:, 1]
-        with gzip.open(args.output_filename_prefix + ".tuning_pred.txt.gz", "wb") as fout:
-            for i in range(len(tuning_labels)):
-                l = "%d\t%.6f\n" % (tuning_labels[i], tuning_y_pred[i])
-                fout.write(l.encode())
-
-        if test_data_available:
-            # Make prediction on test data
-            test_y_pred = clf.predict_proba(test_inputs)[:, 1]
-            with gzip.open(args.output_filename_prefix + ".test_pred.txt.gz", "wb") as fout:
-                for i in range(len(test_labels)):
-                    l = "%d\t%.6f\n" % (test_labels[i], test_y_pred[i])
-                    fout.write(l.encode())
+    if args.classifier in ["DT", "NN"]:
+        fout.close()
 
 
 main()

@@ -4,7 +4,7 @@
         "memory": "2G",
         "name": "{rule}.{wildcards.experiment}",
         "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.experiment}.out",
-        "time": "1:00:00",
+        "time": "0:30:00",
         "threads": 1
     },
     "generate_windows": {
@@ -12,37 +12,97 @@
         "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.out"
     },
     "generate_data": {
+        "memory": "4G",
         "name": "{rule}.{wildcards.chrom}",
         "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.chrom}.out",
         "time": "4:00:00",
         "threads": 2
     },
     "hyperparam_search": {
-        "memory": "6G",
-        "name": "{rule}.{wildcards.heldout_chrom}.{wildcards.dist}",
-        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.heldout_chrom}.{wildcards.dist}.out",
-        "time": "4:00:00",
+        "memory": "8G",
+        "name": "{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}.{wildcards.seed}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}.{wildcards.seed}.out",
+        "time": "12:00:00",
         "threads": 4
     },
     "train": {
-        "memory": "6G",
-        "name": "{rule}.{wildcards.heldout_chrom}.{wildcards.dist}",
-        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.heldout_chrom}.{wildcards.dist}.out",
+        "memory": "12G",
+        "name": "{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}.{wildcards.seed}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}.{wildcards.seed}.out",
+        "time": "12:00:00",
+        "threads": 4
+    },
+    "eval_jaccard": {
+        "memory": "1G",
+        "name": "{rule}.{wildcards.heldout_chroms}.{wildcards.dist}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.heldout_chroms}.{wildcards.dist}.out",
         "time": "2:00:00",
         "threads": 4
     },
     "predict": {
+        "memory": "1G",
+        "name": "{rule}.{wildcards.classifier}.{wildcards.chrom}.{wildcards.dist}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.classifier}.{wildcards.chrom}.{wildcards.dist}.out",
+        "time": "8:00:00",
+        "threads": 4
+    },
+    "eval_classifier": {
+        "memory": "1G",
+        "name": "{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}.out",
+        "time": "8:00:00",
+        "threads": 4
+    },
+    "eval_classifier_ensemble": {
+        "memory": "1G",
+        "name": "{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}.out",
+        "time": "8:00:00",
+        "threads": 4
+    },
+    "eval_classifier_ensemble_smooth": {
+        "memory": "1G",
+        "name": "{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.classifier}.{wildcards.heldout_chroms}.{wildcards.dist}.out",
+        "time": "8:00:00",
+        "threads": 4
+    },
+    "jaccard": {
+        "memory": "1G",
         "name": "{rule}.{wildcards.chrom}.{wildcards.dist}",
         "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.chrom}.{wildcards.dist}.out",
         "time": "4:00:00",
         "threads": 4
     },
-    "generate_juicer_short": {
-        "name": "{rule}",
-        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.out"
+    "sort_bedpe": {
+        "name": "{rule}.{wildcards.method}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.method}.out",
+        "time": "8:00:00",
+        "threads": 8
     },
-    "generate_bed": {
-        "name": "{rule}",
-        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.out"
+    "smooth_bedpe": {
+        "memory": "4G",
+        "name": "{rule}.{wildcards.method}.{wildcards.chrom}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.method}.{wildcards.chrom}.out",
+        "time": "12:00:00"
+    },
+    "run_juicer_pre": {
+        "memory": "8G",
+        "name": "{rule}.{wildcards.method}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.method}.out",
+        "time": "4:00:00"
+    },
+    "report_hic": {
+        "name": "{rule}.{wildcards.chrom}.{wildcards.norm}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.chrom}.{wildcards.norm}.out",
+        "time": "4:00:00",
+        "memory": "16G"
+    },
+    "aggregate_hic": {
+        "name": "{rule}.{wildcards.norm}",
+        "output": "/u/project/ernst/skwon94/pairwise_scoring/logs/{rule}.{wildcards.norm}.out",
+        "time": "8:00:00",
+        "threads": 4,
+        "memory": "2G"
     }
 }
