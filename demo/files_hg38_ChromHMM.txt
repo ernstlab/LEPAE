@@ -1,0 +1,2 @@
+https://egg2.wustl.edu/roadmap/data/byFileType/chromhmmSegmentations/ChmmModels/imputed12marks/jointModel/final/E001_25_imputed12marks_hg38lift_stateno.bed.gz
+https://egg2.wustl.edu/roadmap/data/byFileType/chromhmmSegmentations/ChmmModels/imputed12marks/jointModel/final/E002_25_imputed12marks_hg38lift_stateno.bed.gz

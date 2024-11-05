@@ -1,0 +1,22 @@
+env: "local"
+
+min_dist: 10000
+max_dist: 30000
+window_size: 10000
+
+seed: 413666
+
+training_data_size: 1000 
+tuning_data_size: 100 
+num_random_search: 3
+ensemble_size: 3
+
+num_dnasechipseq_experiments: 2
+num_chromhmm_experiments: 2
+num_chromhmm_states: 25
+
+paths:
+  dnasechipseq_experiment_paths_file: "demo/files_hg38_DNaseChIPseq.txt"
+  chromhmm_experiment_paths_file: "demo/files_hg38_ChromHMM.txt"
+  chrom_size_file: "hg38.chrom.sizes"
+  output_dir: "demo/model/"
