@@ -66,7 +66,7 @@ def main():
     ensemble_size = len(args.trained_classifier_filenames) if args.classifier in ["DT", "NN"] else 1
 
     # Generate a temporary file with input data concatenated
-    tmp_fout = tempfile.NamedTemporaryFile(mode="w", delete=True, prefix=args.output_filename, suffix=".tmp")
+    tmp_fout = tempfile.NamedTemporaryFile(mode="w", delete=True, prefix=args.output_filename, suffix=".tmp", dir='./')
     temp_filename = tmp_fout.name
     print(temp_filename)
     for input_filename in args.input_filenames:
