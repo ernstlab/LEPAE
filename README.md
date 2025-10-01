@@ -113,3 +113,19 @@ snakemake --configfile demo/demo.yaml -c1
 In total, 149 steps run in ~15 minutes. Output file `demo/model/prediction/NN/prediction_min10000_max30000_window10000.bedpe.gz` contains the final score predictions for pairwise distances 10, 20, and 30 kb at a 10-kb resolution.
 
 Given the minimal set of input datasets and small training data size, the trained models are not expected to produce meaningful predictions. To take advantage of this pipeline, scale up to use thousands of datasets and larger training data size as done in [parameters_1kb.yaml](parameters_1kb.yaml) and [parameters_10kb.yaml](parameters_10kb.yaml) in a HPC environment.
+
+### Output directory and files
+
+Main output directory and files are listed below in the order they are generated. The final output file containing LEPAE score is highlighted in bold. Scores are in [BEDPE](https://bedtools.readthedocs.io/en/latest/content/general-usage.html#bedpe-format) format.
+
+| Name | Description |
+| ---- | ----------- |
+| `model/window/all_windows.bed.gz` | Gzipped BED file containing all genomic windows with the specified window size |
+| `model/feature/intersect/hg38_DNaseChIPseq/{experiment_name}.bed.gz` | Gzipped BED file containing DNase-seq and ChIP-seq peak calls intersected with genomic windows |
+| `model/feature/intersect/hg38_ChromHMM/{annotation_name}.bed.gz` | Gzipped BED file containing ChromHMM state annotations intersected with genomic windows |
+| `model/data/{chrom}.window` | Chromosome-specific tab-separated file with each row corresponding to a genomic window. Each row follows the format of `chrom start end window_index \| feature_index_1 feature_index_2 feature_index_3 ...`. The list after `\|` consist of the indices of features that overlap with the genomic window |
+| `model/classifier/NN/even_heldout/` | Directory containing results from hyperparameter tuning and trained models for pairs in even chromosomes |
+| `model/classifier/NN/odd_heldout/` | Directory containing results from hyperparameter tuning and trained models for pairs in odd chromosomes |
+| `model/prediction/NN/even_heldout/{chrom}/` | Chromosome-specific directory containing gzipped BEDPE files of individual and aggregated predictions from models with even chromosomes held out during training |
+| `model/prediction/NN/odd_heldout/{chrom}/` | Chromosome-specific directory containing gzipped BEDPE files of individual and aggregated predictions from models with odd chromosomes held out during training |
+| **`model/prediction/NN/prediction_min{min_dist}_max{max_dist}_window{window_size}.bedpe.gz`** | **Gzipped BEDPE file of final LEPAE score for all pairs of genomic windows of the specified window size and within the specified distance range** |
