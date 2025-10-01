@@ -46,14 +46,14 @@ snakemake \
 
 ### Required input
 
-| Name                            | Description                                                                                               | Example(s)                                                                                                                 | Where to specify                   |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Snakefile                       | Pipeline definition                                                                                       | [Snakefile](Snakefile)                                                                                                     | NA                                 |
-| Config YAML                     | Model configuration                                                                                       | [demo/demo.yaml](demo/demo.yaml), [parameters_1kb.yaml](parameters_1kb.yaml), [parameters_10kb.yaml](parameters_10kb.yaml) | `--configfile` or inside Snakefile |
-| Cluster JSON                    | Cluster configuration                                                                                     | [cluster.json](cluster.json)                                                                                               | `--cluster-config`                 |
-| Chromosome size                 | Chromosome sizes                                                                                          | [hg38.chrom.sizes](hg38.chrom.sizes)                                                                                       | Config YAML                        |
-| DNase-seq and ChIP-seq datasets | Text file listing URLs of gzipped BED files containing peak calls from DNase-seq and ChIP-seq experiments | [files_hg38_DNaseChIPseq.txt](files_hg38_DNaseChIPseq.txt)                                                                 | Config YAML                        |
-| ChromHMM annoations             | Text file listing URLs of gzipped BED files containing ChromHMM tracks                                    | [files_hg38_ChromHMM.txt](files_hg38_ChromHMM.txt)                                                                         | Config YAML                        |
+| Name                            | Description                                                                                                | Example(s)                                                                                                                 | Where to specify                   |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Snakefile                       | Pipeline definition                                                                                        | [Snakefile](Snakefile)                                                                                                     | NA                                 |
+| Config YAML                     | Model configuration                                                                                        | [demo/demo.yaml](demo/demo.yaml), [parameters_1kb.yaml](parameters_1kb.yaml), [parameters_10kb.yaml](parameters_10kb.yaml) | `--configfile` or inside Snakefile |
+| Cluster JSON                    | Cluster configuration                                                                                      | [cluster.json](cluster.json)                                                                                               | `--cluster-config`                 |
+| Chromosome size                 | Chromosome sizes                                                                                           | [hg38.chrom.sizes](hg38.chrom.sizes)                                                                                       | Config YAML                        |
+| DNase-seq and ChIP-seq datasets | Text file listing URLs of gzipped .bed files containing peak calls from DNase-seq and ChIP-seq experiments | [files_hg38_DNaseChIPseq.txt](files_hg38_DNaseChIPseq.txt)                                                                 | Config YAML                        |
+| ChromHMM annoations             | Text file listing URLs of gzipped .bed files containing ChromHMM tracks                                    | [files_hg38_ChromHMM.txt](files_hg38_ChromHMM.txt)                                                                         | Config YAML                        |
 
 The 1-kb resolution LEPAE score was generated using [parameters_1kb.yaml](parameters_1kb.yaml) and the 10-kb resolution LEPAE score was generated using [parameters_10kb.yaml](parameters_10kb.yaml). Other files are used for both resolutions. Input and output paths in config YAML and cluster JSON files should be updated accordingly.
 
@@ -114,18 +114,35 @@ In total, 149 steps run in ~15 minutes. Output file `demo/model/prediction/NN/pr
 
 Given the minimal set of input datasets and small training data size, the trained models are not expected to produce meaningful predictions. To take advantage of this pipeline, scale up to use thousands of datasets and larger training data size as done in [parameters_1kb.yaml](parameters_1kb.yaml) and [parameters_10kb.yaml](parameters_10kb.yaml) in a HPC environment.
 
-### Output directory and files
+### Output
 
-Main output directory and files are listed below in the order they are generated. The final output file containing LEPAE score is highlighted in bold. Scores are in [BEDPE](https://bedtools.readthedocs.io/en/latest/content/general-usage.html#bedpe-format) format.
+Main output directory and files are listed below in the order they are generated. The final output file containing LEPAE score is highlighted in bold. Scores are in [.bedpe](https://bedtools.readthedocs.io/en/latest/content/general-usage.html#bedpe-format) format.
 
-| Name | Description |
-| ---- | ----------- |
-| `model/window/all_windows.bed.gz` | Gzipped BED file containing all genomic windows with the specified window size |
-| `model/feature/intersect/hg38_DNaseChIPseq/{experiment_name}.bed.gz` | Gzipped BED file containing DNase-seq and ChIP-seq peak calls intersected with genomic windows |
-| `model/feature/intersect/hg38_ChromHMM/{annotation_name}.bed.gz` | Gzipped BED file containing ChromHMM state annotations intersected with genomic windows |
-| `model/data/{chrom}.window` | Chromosome-specific tab-separated file with each row corresponding to a genomic window. Each row follows the format of `chrom start end window_index \| feature_index_1 feature_index_2 feature_index_3 ...`. The list after `\|` consist of the indices of features that overlap with the genomic window |
-| `model/classifier/NN/even_heldout/` | Directory containing results from hyperparameter tuning and trained models for pairs in even chromosomes |
-| `model/classifier/NN/odd_heldout/` | Directory containing results from hyperparameter tuning and trained models for pairs in odd chromosomes |
-| `model/prediction/NN/even_heldout/{chrom}/` | Chromosome-specific directory containing gzipped BEDPE files of individual and aggregated predictions from models with even chromosomes held out during training |
-| `model/prediction/NN/odd_heldout/{chrom}/` | Chromosome-specific directory containing gzipped BEDPE files of individual and aggregated predictions from models with odd chromosomes held out during training |
-| **`model/prediction/NN/prediction_min{min_dist}_max{max_dist}_window{window_size}.bedpe.gz`** | **Gzipped BEDPE file of final LEPAE score for all pairs of genomic windows of the specified window size and within the specified distance range** |
+| Name                                                                                          | Description                                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model/window/all_windows.bed.gz`                                                             | Gzipped .bed file containing all genomic windows with the specified window size                                                                                                                                                                                                                           |
+| `model/feature/intersect/hg38_DNaseChIPseq/{experiment_name}.bed.gz`                          | Gzipped .bed file containing DNase-seq and ChIP-seq peak calls intersected with genomic windows                                                                                                                                                                                                           |
+| `model/feature/intersect/hg38_ChromHMM/{annotation_name}.bed.gz`                              | Gzipped .bed file containing ChromHMM state annotations intersected with genomic windows                                                                                                                                                                                                                  |
+| `model/data/{chrom}.window`                                                                   | Chromosome-specific tab-separated file with each row corresponding to a genomic window. Each row follows the format of `chrom start end window_index \| feature_index_1 feature_index_2 feature_index_3 ...`. The list after `\|` consist of the indices of features that overlap with the genomic window |
+| `model/classifier/NN/even_heldout/`                                                           | Directory containing results from hyperparameter tuning and trained models for pairs in even chromosomes                                                                                                                                                                                                  |
+| `model/classifier/NN/odd_heldout/`                                                            | Directory containing results from hyperparameter tuning and trained models for pairs in odd chromosomes                                                                                                                                                                                                   |
+| `model/prediction/NN/even_heldout/{chrom}/`                                                   | Chromosome-specific directory containing gzipped .bedpe files of individual and aggregated predictions from models with even chromosomes held out during training                                                                                                                                         |
+| `model/prediction/NN/odd_heldout/{chrom}/`                                                    | Chromosome-specific directory containing gzipped .bedpe files of individual and aggregated predictions from models with odd chromosomes held out during training                                                                                                                                          |
+| **`model/prediction/NN/prediction_min{min_dist}_max{max_dist}_window{window_size}.bedpe.gz`** | **Gzipped .bedpe file of final LEPAE score for all pairs of genomic windows of the specified window size and within the specified distance range**                                                                                                                                                        |
+
+#### Generating .hic files from .bedpe score files
+
+This requires having the [Juicer](https://github.com/aidenlab/juicer/wiki) tool installed.
+
+First, convert the .bedpe file into a "short with score" (.sws) file using the following command. Replace `{final_bedpe}` and `{output_prefix}` with the actual file path and desired output prefix, respectively.
+
+```
+gzip -cd {final_bedpe} | awk -v OFS="\t" '{{print 0,$1,$2,0,0,$1,$5,1,$11}}' > {output_prefix}.sws
+
+```
+
+Then, convert the .sws file to a [.hic](https://genome.ucsc.edu/goldenPath/help/hic.html) file using the Juicer tool's [pre](https://github.com/aidenlab/juicer/wiki/Pre) command. Replace `{input_sws}` and `{output_hic}` with the actual file paths. Adjust the resolution (`-r` option) as needed. Juicer tool version 1.22.01 was used in this work.
+
+```
+time java -Xmx6g -jar {path_to_juicer_tools_jar} source/juicer_tools_1.22.01.jar pre -r {window_size} -n --random-seed {seed} {input_sws} {output_hic} hg38
+```
