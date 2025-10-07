@@ -11,6 +11,14 @@ tuning_data_size: 5000
 num_random_search: 10
 ensemble_size: 5
 
+NN:
+  hyperparam:
+    - batch_size
+    - learning_rate
+    - dropout_rate
+    - num_neuron_init
+    - num_neuron_fin
+
 num_dnasechipseq_experiments: 3337
 num_chromhmm_experiments: 127
 num_chromhmm_states: 25

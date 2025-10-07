@@ -15,6 +15,14 @@ num_dnasechipseq_experiments: 2
 num_chromhmm_experiments: 2
 num_chromhmm_states: 25
 
+NN:
+  hyperparam:
+    - batch_size
+    - learning_rate
+    - dropout_rate
+    - num_neuron_init
+    - num_neuron_fin
+
 paths:
   dnasechipseq_experiment_paths_file: "demo/files_hg38_DNaseChIPseq.txt"
   chromhmm_experiment_paths_file: "demo/files_hg38_ChromHMM.txt"
