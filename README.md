@@ -34,7 +34,9 @@ snakemake \
 --cluster-config cluster.json \
 --cluster "qsub -V -l h_rt={cluster.time},h_data={cluster.memory} -pe shared {cluster.threads} -N {cluster.name} -j y -o {cluster.output}" \
 --latency-wait 60 \
---local-cores 1
+--local-cores 1 \
+--use-conda \
+--retry
 ```
 
 - `-j 100` is to limit the number of parallel jobs to 100. Adjust this number based on resource availability.
@@ -43,6 +45,7 @@ snakemake \
 - `--cluster "qsub -V -l h_rt={cluster.time},h_data={cluster.memory} -pe shared {cluster.threads} -N {cluster.name} -j y -o {cluster.output}"` specifies the cluster submission command
 - `--latency-wait 60` specifies to wait for 60 seconds before checking the status of the submitted jobs. This is optional. Remove or adjust this number accordingly.
 - `--local-cores 1` limits the number of local cores used to 1. This is optional
+- `--use-conda` enables using conda environment defined in [env.yaml](env.yaml) for some of the jobs. Snakemake will automatically create the conda environment based on the YAML file. Depending on the computing enviornment, this YAML file may need to be modified. See [here](https://snakemake.readthedocs.io/en/v6.8.1/snakefiles/deployment.html#integrated-package-management) for more details. If all the pre-requisites are already installed and available to the pipeline, this flag is not necessary.
 
 ### Required input
 
