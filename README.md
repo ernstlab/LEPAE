@@ -47,6 +47,10 @@ snakemake \
 - `--local-cores 1` limits the number of local cores used to 1. This is optional
 - `--use-conda` enables using conda environment defined in [env.yaml](env.yaml) for some of the jobs. Snakemake will automatically create the conda environment based on the YAML file. Depending on the computing enviornment, this YAML file may need to be modified. See [here](https://snakemake.readthedocs.io/en/v6.8.1/snakefiles/deployment.html#integrated-package-management) for more details. If all the pre-requisites are already installed and available to the pipeline, this flag is not necessary.
 
+#### Run time on HPC
+
+As a point of reference, the 10-kb resolution model using [parameters_10kb.yaml](parameters_10kb.yaml) took ~22 hours to complete using 100 parallel jobs on UCLA's Hoffman2 cluster. Note that the run time will vary depending on the computing environment, resource availability, and input data.
+
 ### Required input
 
 | Name                            | Description                                                                                                | Example(s)                                                                                                                 | Where to specify                   |
