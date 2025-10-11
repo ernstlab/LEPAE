@@ -256,6 +256,8 @@ rule generate_data:
         num_features=num_features,
         window_size=window_size,
     threads: 2
+    conda:
+        "env.yaml"
     output:
         os.path.join(output_dir, "data/{chrom}.window"),
     shell:
@@ -298,6 +300,8 @@ rule hyperparam_search:
             "classifier/{classifier}/{heldout_chroms}_heldout/hyperparam_search_dist{dist}_seed{seed}.progress.txt",
         ),
     threads: 4
+    conda:
+        "env.yaml"
     shell:
         """
         time python3 -u source/train.py {wildcards.classifier} \
@@ -391,6 +395,7 @@ rule train:
             allow_missing=True,
         ),
     threads: 4
+    conda: "env.yaml"
     shell:
         """
         time python3 -u source/train.py {wildcards.classifier} \
@@ -448,6 +453,8 @@ rule eval_classifier_ensemble_smooth:
             "classifier/{classifier}/{heldout_chroms}_heldout/train_dist{dist}.test_pred_ensembled_smoothed.txt.gz",
         ),
     threads: 4
+    conda:
+        "env.yaml"
     shell:
         """
         time python3 -u source/predict.py {wildcards.classifier} \
@@ -498,6 +505,8 @@ rule predict:
             % pred_prefix,
         ),
     threads: 4
+    conda:
+        "env.yaml"
     shell:
         """
         time python3 -u source/predict.py {wildcards.classifier} \
