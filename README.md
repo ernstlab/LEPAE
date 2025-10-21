@@ -1,4 +1,5 @@
 # Learning Evidence of Pairwise Association from Epigenomic and TF binding data
+[![DOI](https://zenodo.org/badge/352721735.svg)](https://doi.org/10.5281/zenodo.17403040)
 
 **L**earning **E**vidence of **P**airwise **A**ssociation from **E**pigenomic and TF binding data (LEPAE) quantifies evidence of association for pairs of genomic windows based on large-scale epigenomic and TF binding data while considering distance information.
 
